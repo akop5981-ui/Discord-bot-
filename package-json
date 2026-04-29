@@ -1,0 +1,13 @@
+{
+  "name": "discord-nuke-bot",
+  "version": "1.0.0",
+  "description": "Discord nuke bot that deletes all channels, creates 57 new ones and mass pings",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1"
+  }
+}
