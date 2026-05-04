@@ -1,13 +1,22 @@
 {
-  "name": "discord-nuke-bot",
+  "name": "nex-afk-bot",
   "version": "1.0.0",
-  "description": "Discord nuke bot that deletes all channels, creates 57 new ones and mass pings",
+  "description": "Discord bot with AFK system, emoji and sticker steal using Components V2",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node index.js"
   },
+  "keywords": [
+    "discord",
+    "bot",
+    "afk",
+    "discord.js"
+  ],
+  "author": "Nex",
+  "license": "ISC",
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.3.1"
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5"
   }
 }
