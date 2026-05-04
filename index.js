@@ -26,7 +26,7 @@ client.once('ready', async () => {
   client.user.setPresence({
     status: 'dnd',
     activities: [{
-      name: 'Owned by Nex',
+      name: '.gg/blackroom | owned by @azairoxc',
       type: ActivityType.Custom
     }]
   });
