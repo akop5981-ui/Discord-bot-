@@ -9,7 +9,7 @@ const {
   REST,
   Routes,
   ContainerBuilder,
-  MessageFlags
+  EmbedBuilder
 } = require('discord.js');
 
 const client = new Client({
@@ -23,84 +23,73 @@ const client = new Client({
 const PREFIX = ".";
 const afkUsers = new Map();
 
+// ===== TIME FORMAT =====
+function formatTime(ms) {
+  const sec = Math.floor(ms / 1000) % 60;
+  const min = Math.floor(ms / 60000) % 60;
+  const hr = Math.floor(ms / 3600000);
+
+  return `${hr}h ${min}m ${sec}s`;
+}
+
+// ===== CONTAINER =====
+function afkContainer(text, reason, time) {
+  return new ContainerBuilder()
+    .setAccentColor(0x2b2d31)
+    .addTextDisplayComponents(t => t.setContent(text))
+    .addSeparatorComponents(s => s)
+    .addTextDisplayComponents(t =>
+      t.setContent(`**Reason:** ${reason}\n**Since:** ${time}`)
+    );
+}
+
 // ===== READY =====
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
   client.user.setPresence({
     status: 'dnd',
-    activities: [{
-      name: 'https://discord.gg/th9EWYaCHu',
-      type: ActivityType.Custom
-    }]
+    activities: [{ name: 'Owned by Nex', type: ActivityType.Custom }]
   });
 
-  // SLASH COMMANDS
   const commands = [
     new SlashCommandBuilder()
       .setName('afk')
       .setDescription('Set AFK')
-      .addStringOption(opt =>
-        opt.setName('reason').setDescription('Reason').setRequired(true)
-      ),
+      .addStringOption(o => o.setName('reason').setRequired(true)),
 
     new SlashCommandBuilder()
       .setName('avatar')
       .setDescription('Get avatar')
-      .addUserOption(opt =>
-        opt.setName('user').setDescription('User').setRequired(true)
-      ),
+      .addUserOption(o => o.setName('user').setRequired(true)),
 
     new SlashCommandBuilder()
       .setName('say')
       .setDescription('Send message')
-      .addChannelOption(opt =>
-        opt.setName('channel').setDescription('Channel').setRequired(true)
-      )
-      .addStringOption(opt =>
-        opt.setName('text').setDescription('Message').setRequired(true)
-      )
-  ].map(cmd => cmd.toJSON());
+      .addChannelOption(o => o.setName('channel').setRequired(true))
+      .addStringOption(o => o.setName('text').setRequired(true))
+  ].map(c => c.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-  try {
-    await rest.put(
-      Routes.applicationCommands(client.user.id),
-      { body: commands }
-    );
-    console.log("Slash commands loaded");
-  } catch (e) {
-    console.error(e);
-  }
+  await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+  console.log("Slash commands loaded");
 });
 
-// ===== CONTAINER HELPERS =====
-function container(text, extra) {
-  const c = new ContainerBuilder()
-    .setAccentColor(0x2b2d31)
-    .addTextDisplayComponents(t => t.setContent(text));
-
-  if (extra) {
-    c.addSeparatorComponents(s => s)
-     .addTextDisplayComponents(t => t.setContent(extra));
-  }
-
-  return c;
-}
-
-// ===== MESSAGE COMMANDS =====
+// ===== MESSAGE =====
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
-  // AFK mention
+  // mention AFK
   message.mentions.users.forEach(user => {
     if (afkUsers.has(user.id)) {
       const data = afkUsers.get(user.id);
+      const duration = formatTime(Date.now() - data.time);
 
       message.reply({
-        components: [container(`@${user.username} is now afk`, `**Reason:** ${data.reason}`)],
-        flags: MessageFlags.IsComponentsV2
+        components: [
+          afkContainer(`@${user.username} is AFK`, data.reason, duration)
+        ]
       });
     }
   });
@@ -115,7 +104,7 @@ client.on('messageCreate', async (message) => {
       ).catch(() => {});
     }
 
-    message.reply("AFK removed");
+    message.reply("Welcome back, AFK removed");
   }
 
   if (!message.content.startsWith(PREFIX)) return;
@@ -127,15 +116,19 @@ client.on('messageCreate', async (message) => {
   if (cmd === "afk") {
     const reason = args.join(" ") || "No reason";
 
-    afkUsers.set(message.author.id, { reason });
+    afkUsers.set(message.author.id, {
+      reason,
+      time: Date.now()
+    });
 
     try {
       await message.member.setNickname(`[AFK] ${message.member.displayName}`);
     } catch {}
 
     return message.channel.send({
-      components: [container(`${message.author} is now afk`, `**Reason:** ${reason}`)],
-      flags: MessageFlags.IsComponentsV2
+      components: [
+        afkContainer(`${message.author} is now AFK`, reason, "Just now")
+      ]
     });
   }
 
@@ -143,10 +136,12 @@ client.on('messageCreate', async (message) => {
   if (cmd === "avatar") {
     const user = message.mentions.users.first() || message.author;
 
-    return message.reply({
-      components: [container(`@${user.username} avatar`, user.displayAvatarURL({ size: 1024 }))],
-      flags: MessageFlags.IsComponentsV2
-    });
+    const embed = new EmbedBuilder()
+      .setColor("#000000")
+      .setTitle(`${user.username} avatar`)
+      .setImage(user.displayAvatarURL({ size: 1024 }));
+
+    return message.reply({ embeds: [embed] });
   }
 
   // ===== SAY =====
@@ -160,11 +155,7 @@ client.on('messageCreate', async (message) => {
     const text = args.slice(1).join(" ");
     if (!text) return message.reply("Usage: .say #channel text");
 
-    await channel.send({
-      components: [container(text)],
-      flags: MessageFlags.IsComponentsV2
-    });
-
+    await channel.send(text);
     message.delete().catch(() => {});
   }
 
@@ -218,7 +209,7 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// ===== SLASH COMMANDS =====
+// ===== SLASH =====
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -226,16 +217,19 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.commandName === "afk") {
     const reason = interaction.options.getString('reason');
 
-    afkUsers.set(interaction.user.id, { reason });
+    afkUsers.set(interaction.user.id, {
+      reason,
+      time: Date.now()
+    });
 
     try {
       await interaction.member.setNickname(`[AFK] ${interaction.member.displayName}`);
     } catch {}
 
     return interaction.reply({
-      components: [container(`${interaction.user} is now afk`, `**Reason:** ${reason}`)],
-      flags: MessageFlags.IsComponentsV2,
-      ephemeral: true
+      components: [
+        afkContainer(`${interaction.user} is now AFK`, reason, "Just now")
+      ]
     });
   }
 
@@ -243,9 +237,13 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.commandName === "avatar") {
     const user = interaction.options.getUser('user');
 
+    const embed = new EmbedBuilder()
+      .setColor("#000000")
+      .setTitle(`${user.username} avatar`)
+      .setImage(user.displayAvatarURL({ size: 1024 }));
+
     return interaction.reply({
-      components: [container(`@${user.username} avatar`, user.displayAvatarURL({ size: 1024 }))],
-      flags: MessageFlags.IsComponentsV2,
+      embeds: [embed],
       ephemeral: true
     });
   }
@@ -258,13 +256,13 @@ client.on('interactionCreate', async (interaction) => {
     const channel = interaction.options.getChannel('channel');
     const text = interaction.options.getString('text');
 
-    await channel.send({
-      components: [container(text)],
-      flags: MessageFlags.IsComponentsV2
-    });
+    await channel.send(text);
 
-    return interaction.reply({ content: "Sent", ephemeral: true });
+    return interaction.reply({
+      content: "Sent",
+      ephemeral: true
+    });
   }
 });
 
-client.login(process.env.TOKEN);
+client.login(process.env.TOKEN); 
