@@ -4,10 +4,13 @@ const {
   Client,
   GatewayIntentBits,
   ActivityType,
-  Collection
+  PermissionsBitField,
+  SlashCommandBuilder,
+  REST,
+  Routes,
+  ContainerBuilder,
+  MessageFlags
 } = require('discord.js');
-
-const fs = require('fs');
 
 const client = new Client({
   intents: [
@@ -20,16 +23,8 @@ const client = new Client({
 const PREFIX = ".";
 const afkUsers = new Map();
 
-// load slash commands
-client.commands = new Collection();
-const commandFiles = fs.readdirSync('./commands').filter(f => f.endsWith('.js'));
-
-for (const file of commandFiles) {
-  const command = require(`./commands/${file}`);
-  client.commands.set(command.data.name, command);
-}
-
-client.once('ready', () => {
+// READY
+client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
   client.user.setPresence({
@@ -39,24 +34,54 @@ client.once('ready', () => {
       type: ActivityType.Custom
     }]
   });
+
+  // register slash command
+  const commands = [
+    new SlashCommandBuilder()
+      .setName('afk')
+      .setDescription('Set AFK')
+      .addStringOption(opt =>
+        opt.setName('reason')
+          .setDescription('Reason')
+          .setRequired(true)
+      )
+  ].map(cmd => cmd.toJSON());
+
+  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+
+  try {
+    await rest.put(
+      Routes.applicationCommands(client.user.id),
+      { body: commands }
+    );
+    console.log("Slash command registered");
+  } catch (err) {
+    console.error("Slash register error:", err);
+  }
 });
+
+// FUNCTION: container
+function createAFKContainer(text, reason) {
+  return new ContainerBuilder()
+    .setAccentColor(0x2b2d31)
+    .addTextDisplayComponents(t => t.setContent(text))
+    .addSeparatorComponents(s => s)
+    .addTextDisplayComponents(t => t.setContent(`**Reason:** ${reason}`));
+}
 
 // MESSAGE COMMANDS
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
-  // AFK mention
+  // mention AFK check
   message.mentions.users.forEach(user => {
     if (afkUsers.has(user.id)) {
       const data = afkUsers.get(user.id);
 
-      const { ContainerBuilder, MessageFlags } = require('discord.js');
-
-      const container = new ContainerBuilder()
-        .setAccentColor(0x2b2d31)
-        .addTextDisplayComponents(t => t.setContent(`@${user.username} is now afk`))
-        .addSeparatorComponents(s => s)
-        .addTextDisplayComponents(t => t.setContent(`**Reason:** ${data.reason}`));
+      const container = createAFKContainer(
+        `@${user.username} is now afk`,
+        data.reason
+      );
 
       message.reply({
         components: [container],
@@ -69,7 +94,7 @@ client.on('messageCreate', async (message) => {
   if (afkUsers.has(message.author.id)) {
     afkUsers.delete(message.author.id);
 
-    if (message.member.nickname?.startsWith("[AFK] ")) {
+    if (message.member?.nickname?.startsWith("[AFK] ")) {
       await message.member.setNickname(
         message.member.nickname.replace("[AFK] ", "")
       ).catch(() => {});
@@ -83,12 +108,6 @@ client.on('messageCreate', async (message) => {
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
 
-  const {
-    PermissionsBitField,
-    ContainerBuilder,
-    MessageFlags
-  } = require('discord.js');
-
   // AFK
   if (cmd === "afk") {
     const reason = args.join(" ") || "No reason";
@@ -99,13 +118,12 @@ client.on('messageCreate', async (message) => {
       await message.member.setNickname(`[AFK] ${message.member.displayName}`);
     } catch {}
 
-    const container = new ContainerBuilder()
-      .setAccentColor(0x2b2d31)
-      .addTextDisplayComponents(t => t.setContent(`${message.author} is now afk`))
-      .addSeparatorComponents(s => s)
-      .addTextDisplayComponents(t => t.setContent(`**Reason:** ${reason}`));
+    const container = createAFKContainer(
+      `${message.author} is now afk`,
+      reason
+    );
 
-    message.channel.send({
+    return message.channel.send({
       components: [container],
       flags: MessageFlags.IsComponentsV2
     });
@@ -122,9 +140,7 @@ client.on('messageCreate', async (message) => {
     if (!emoji || !name)
       return message.reply("Usage: .steal <emoji> <name>");
 
-    const regex = /<?a?:\w+:(\d+)>?/;
-    const match = emoji.match(regex);
-
+    const match = emoji.match(/<?a?:\w+:(\d+)>?/);
     if (!match) return message.reply("Invalid emoji");
 
     const id = match[1];
@@ -135,7 +151,7 @@ client.on('messageCreate', async (message) => {
       await message.guild.emojis.create({ attachment: url, name });
       message.reply("Emoji added");
     } catch {
-      message.reply("Failed");
+      message.reply("Failed to add emoji");
     }
   }
 
@@ -145,14 +161,13 @@ client.on('messageCreate', async (message) => {
       return message.reply("No permission");
 
     const name = args[0];
-    if (!name)
-      return message.reply("Usage: .stealsticker <name>");
+    if (!name) return message.reply("Usage: .stealsticker <name>");
 
     const replied = await message.fetchReference().catch(() => null);
     if (!replied) return message.reply("Reply to a sticker");
 
     const sticker = replied.stickers.first();
-    if (!sticker) return message.reply("No sticker");
+    if (!sticker) return message.reply("No sticker found");
 
     try {
       await message.guild.stickers.create({
@@ -162,11 +177,11 @@ client.on('messageCreate', async (message) => {
       });
       message.reply("Sticker added");
     } catch {
-      message.reply("Failed");
+      message.reply("Failed to add sticker");
     }
   }
 
-  // SAY
+  // SAY (ADMIN)
   if (cmd === "say") {
     if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator))
       return message.reply("Admin only");
@@ -190,18 +205,29 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// SLASH HANDLER
+// SLASH COMMAND
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
+  if (interaction.commandName === "afk") {
+    const reason = interaction.options.getString('reason');
 
-  try {
-    await command.execute(interaction, afkUsers);
-  } catch (err) {
-    console.error(err);
+    afkUsers.set(interaction.user.id, { reason });
+
+    try {
+      await interaction.member.setNickname(`[AFK] ${interaction.member.displayName}`);
+    } catch {}
+
+    const container = createAFKContainer(
+      `${interaction.user} is now afk`,
+      reason
+    );
+
+    await interaction.reply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2
+    });
   }
 });
 
-client.login(process.env.TOKEN); 
+client.login(process.env.TOKEN);
