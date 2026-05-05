@@ -8,7 +8,8 @@ const {
   SlashCommandBuilder,
   REST,
   Routes,
-  EmbedBuilder
+  EmbedBuilder,
+  AttachmentBuilder
 } = require('discord.js');
 
 const client = new Client({
@@ -23,7 +24,7 @@ const PREFIX = ".";
 const afkUsers = new Map();
 
 
-// ================= TIME FORMAT =================
+// ================= TIME =================
 function formatTime(ms) {
   const s = Math.floor(ms / 1000) % 60;
   const m = Math.floor(ms / 60000) % 60;
@@ -36,12 +37,19 @@ function formatTime(ms) {
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
+  // 🔥 STATUS (STREAMING + LINK)
   client.user.setPresence({
     status: "dnd",
-    activities: [{ name: "https://discord.gg/th9EWYaCHu", type: ActivityType.Custom }]
+    activities: [
+      {
+        name: "Click to join",
+        type: ActivityType.Streaming,
+        url: "https://discord.gg/th9EWYaCHu"
+      }
+    ]
   });
 
-  // Slash Commands
+  // ================= SLASH COMMANDS =================
   const commands = [
     new SlashCommandBuilder()
       .setName("afk")
@@ -91,7 +99,7 @@ client.once('ready', async () => {
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
-  // ===== AFK MENTION CHECK =====
+  // AFK mention
   for (const user of message.mentions.users.values()) {
     if (!afkUsers.has(user.id)) continue;
 
@@ -103,8 +111,8 @@ client.on("messageCreate", async (message) => {
     );
   }
 
-  // ===== REMOVE AFK (FIXED) =====
-  if (afkUsers.has(message.author.id)) {
+  // REMOVE AFK
+  if (afkUsers.has(message.author.id) && !message.content.startsWith(PREFIX + "afk")) {
     afkUsers.delete(message.author.id);
 
     if (message.member?.nickname?.startsWith("[AFK] ")) {
@@ -157,10 +165,10 @@ client.on("messageCreate", async (message) => {
       return message.reply("Admin only");
 
     const channel = message.mentions.channels.first();
-    if (!channel) return message.reply("Mention a channel");
+    if (!channel) return message.reply("Mention channel");
 
     const text = args.slice(1).join(" ");
-    if (!text) return message.reply("Usage: .say #channel message");
+    if (!text) return message.reply("Usage: .say #channel text");
 
     await channel.send(text);
     message.delete().catch(() => {});
@@ -188,6 +196,36 @@ client.on("messageCreate", async (message) => {
       message.reply("Failed");
     }
   }
+
+  // ================= STEAL STICKER (FIXED) =================
+  if (cmd === "stealsticker") {
+    if (!message.member.permissions.has(PermissionsBitField.Flags.ManageEmojisAndStickers))
+      return message.reply("No permission");
+
+    const name = args[0];
+    if (!name) return message.reply("Usage: .stealsticker <name>");
+
+    const replied = await message.fetchReference().catch(() => null);
+    if (!replied) return message.reply("Reply to sticker");
+
+    const sticker = replied.stickers.first();
+    if (!sticker) return message.reply("No sticker found");
+
+    try {
+      const file = new AttachmentBuilder(sticker.url, { name: "sticker.png" });
+
+      await message.guild.stickers.create({
+        file,
+        name,
+        tags: "sticker"
+      });
+
+      message.reply("Sticker added");
+    } catch (err) {
+      console.error(err);
+      message.reply("Failed to add sticker");
+    }
+  }
 });
 
 
@@ -197,7 +235,7 @@ client.on("interactionCreate", async (interaction) => {
 
   try {
 
-    // ===== AFK =====
+    // AFK
     if (interaction.commandName === "afk") {
       const reason = interaction.options.getString("reason");
 
@@ -215,7 +253,7 @@ client.on("interactionCreate", async (interaction) => {
       );
     }
 
-    // ===== AVATAR =====
+    // AVATAR
     if (interaction.commandName === "avatar") {
       const user = interaction.options.getUser("user");
 
@@ -230,7 +268,7 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ===== SAY =====
+    // SAY
     if (interaction.commandName === "say") {
       if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
         return interaction.reply({ content: "Admin only", ephemeral: true });
@@ -241,7 +279,7 @@ client.on("interactionCreate", async (interaction) => {
       await channel.send(text);
 
       return interaction.reply({
-        content: "Message sent",
+        content: "Sent",
         ephemeral: true
       });
     }
