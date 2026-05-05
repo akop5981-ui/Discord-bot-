@@ -49,7 +49,7 @@ client.once('ready', async () => {
 
   client.user.setPresence({
     status: 'dnd',
-    activities: [{ name: 'Owned by Nex', type: ActivityType.Custom }]
+    activities: [{ name: 'https://discord.gg/th9EWYaCHu', type: ActivityType.Custom }]
   });
 
   const commands = [
