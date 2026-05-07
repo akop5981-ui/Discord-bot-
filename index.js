@@ -10,10 +10,6 @@ const {
   Routes,
   EmbedBuilder,
   AttachmentBuilder,
-  ContainerBuilder,
-  TextDisplayBuilder,
-  SeparatorBuilder,
-  SeparatorSpacingSize,
   ChannelType
 } = require('discord.js');
 
@@ -25,41 +21,12 @@ const client = new Client({
   ]
 });
 
-// ================= STORAGE =================
-const afkUsers = new Map();
-const welcomeChannels = new Map();
-const autoRoles = new Map();
-const autoReact = new Map();
-const stickyMessages = new Map();
-
 const PREFIX = '.';
 
-// ================= UTIL =================
-function formatTime(ms) {
-  const s = Math.floor(ms / 1000) % 60;
-  const m = Math.floor(ms / 60000) % 60;
-  const h = Math.floor(ms / 3600000);
-  return `${h}h ${m}m ${s}s`;
-}
+const afkUsers = new Map();
+const autoReact = new Map();
 
-// ================= AFK CONTAINER =================
-function afkContainer(user, reason, time) {
-  return new ContainerBuilder()
-    .setAccentColor(0x000000)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`${user} is now AFK`)
-    )
-    .addSeparatorComponents(
-      new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**Reason:** ${reason}\n**Time:** ${time}`
-      )
-    );
-}
-
-// ================= READY (FIXED) =================
+// ================= READY =================
 client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
@@ -67,7 +34,7 @@ client.once('clientReady', async () => {
     status: 'dnd',
     activities: [
       {
-        name: 'N3xel Server',
+        name: 'N3xel',
         type: ActivityType.Streaming,
         url: 'https://discord.gg/th9EWYaCHu'
       }
@@ -76,71 +43,90 @@ client.once('clientReady', async () => {
 
   // ================= SLASH COMMANDS =================
   const commands = [
+
+    // AFK
     new SlashCommandBuilder()
       .setName('afk')
-      .setDescription('Set AFK status')
-      .addStringOption(o =>
-        o.setName('reason')
-          .setDescription('Your AFK reason')
+      .setDescription('Set AFK')
+      .addStringOption(option =>
+        option
+          .setName('reason')
+          .setDescription('AFK reason')
           .setRequired(true)
       ),
 
+    // AVATAR
     new SlashCommandBuilder()
       .setName('avatar')
-      .setDescription('Show avatar')
-      .addUserOption(o =>
-        o.setName('user')
-          .setDescription('User to show')
+      .setDescription('Get avatar')
+      .addUserOption(option =>
+        option
+          .setName('user')
+          .setDescription('Target user')
           .setRequired(true)
       ),
 
+    // SAY
     new SlashCommandBuilder()
       .setName('say')
       .setDescription('Send message')
-      .addChannelOption(o =>
-        o.setName('channel')
-          .setDescription('Channel')
+      .addChannelOption(option =>
+        option
+          .setName('channel')
+          .setDescription('Target channel')
+          .addChannelTypes(ChannelType.GuildText)
           .setRequired(true)
       )
-      .addStringOption(o =>
-        o.setName('text')
+      .addStringOption(option =>
+        option
+          .setName('text')
           .setDescription('Message')
           .setRequired(true)
       ),
 
+    // STICKY
     new SlashCommandBuilder()
       .setName('stick')
       .setDescription('Sticky message')
-      .addChannelOption(o =>
-        o.setName('channel')
+      .addChannelOption(option =>
+        option
+          .setName('channel')
           .setDescription('Channel')
+          .addChannelTypes(ChannelType.GuildText)
           .setRequired(true)
       )
-      .addStringOption(o =>
-        o.setName('text')
-          .setDescription('Sticky message')
+      .addStringOption(option =>
+        option
+          .setName('text')
+          .setDescription('Sticky text')
           .setRequired(true)
       ),
 
+    // AUTOREACT
     new SlashCommandBuilder()
       .setName('autoreact')
-      .setDescription('Auto react system')
-      .addStringOption(o =>
-        o.setName('mode')
+      .setDescription('Auto react')
+      .addStringOption(option =>
+        option
+          .setName('mode')
           .setDescription('enable or disable')
           .setRequired(true)
       )
-      .addStringOption(o =>
-        o.setName('emoji')
+      .addStringOption(option =>
+        option
+          .setName('emoji')
           .setDescription('Emoji')
           .setRequired(true)
       )
-      .addChannelOption(o =>
-        o.setName('channel')
+      .addChannelOption(option =>
+        option
+          .setName('channel')
           .setDescription('Channel')
+          .addChannelTypes(ChannelType.GuildText)
           .setRequired(true)
       )
-  ].map(c => c.toJSON());
+
+  ].map(cmd => cmd.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
@@ -152,41 +138,52 @@ client.once('clientReady', async () => {
   console.log('Slash commands loaded');
 });
 
-// ================= MESSAGE EVENTS =================
+// ================= MESSAGE EVENT =================
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
-  // AUTO REACT
-  const react = autoReact.get(message.channel.id);
-  if (react) message.react(react).catch(() => {});
+  // ================= AUTO REACT =================
+  const reactEmoji = autoReact.get(message.channel.id);
 
-  // AFK MENTION
+  if (reactEmoji) {
+    message.react(reactEmoji).catch(() => {});
+  }
+
+  // ================= AFK MENTION =================
   for (const user of message.mentions.users.values()) {
     if (!afkUsers.has(user.id)) continue;
 
     const data = afkUsers.get(user.id);
-    const time = formatTime(Date.now() - data.time);
 
-    message.reply({
-      components: [
-        afkContainer(user.username, data.reason, time)
-      ]
-    });
+    message.reply(
+      `${user.username} is AFK\nReason: ${data.reason}`
+    );
   }
 
-  // REMOVE AFK
-  if (afkUsers.has(message.author.id) && !message.content.startsWith('.afk')) {
+  // ================= REMOVE AFK =================
+  if (
+    afkUsers.has(message.author.id) &&
+    !message.content.startsWith('.afk')
+  ) {
     afkUsers.delete(message.author.id);
-    message.channel.send(`Welcome back ${message.author}`);
+
+    message.channel.send(
+      `Welcome back ${message.author}`
+    );
   }
 
   if (!message.content.startsWith(PREFIX)) return;
 
-  const args = message.content.slice(1).trim().split(/ +/);
+  const args = message.content
+    .slice(PREFIX.length)
+    .trim()
+    .split(/ +/);
+
   const cmd = args.shift().toLowerCase();
 
-  // AFK
+  // ================= AFK =================
   if (cmd === 'afk') {
+
     const reason = args.join(' ') || 'No reason';
 
     afkUsers.set(message.author.id, {
@@ -194,59 +191,228 @@ client.on('messageCreate', async (message) => {
       time: Date.now()
     });
 
-    return message.channel.send({
-      components: [
-        afkContainer(message.author.username, reason, 'Now')
-      ]
+    return message.channel.send(
+      `${message.author.username} is now AFK\nReason: ${reason}`
+    );
+  }
+
+  // ================= AVATAR =================
+  if (cmd === 'avatar') {
+
+    const user =
+      message.mentions.users.first() ||
+      message.author;
+
+    const embed = new EmbedBuilder()
+      .setColor(0x000000)
+      .setTitle(`${user.username} Avatar`)
+      .setImage(
+        user.displayAvatarURL({
+          size: 1024
+        })
+      );
+
+    return message.reply({
+      embeds: [embed]
     });
   }
 
-  // SAY
+  // ================= SAY =================
   if (cmd === 'say') {
-    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
 
-    const channel = message.mentions.channels.first();
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.Administrator
+      )
+    ) {
+      return message.reply('Admin only');
+    }
+
+    const channel =
+      message.mentions.channels.first();
+
+    if (!channel) {
+      return message.reply(
+        'Usage: .say #channel hello'
+      );
+    }
+
     const text = args.slice(1).join(' ');
 
-    if (!channel || !text) return;
+    if (!text) {
+      return message.reply(
+        'Usage: .say #channel hello'
+      );
+    }
 
-    channel.send(text);
+    await channel.send(text);
+
     message.delete().catch(() => {});
   }
 
-  // STICKY
-  if (cmd === 'stick') {
-    if (!message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return;
+  // ================= STEAL EMOJI =================
+  if (cmd === 'steal') {
 
-    const channel = message.mentions.channels.first();
-    const text = args.slice(1).join(' ');
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.ManageEmojisAndStickers
+      )
+    ) {
+      return message.reply('No permission');
+    }
 
-    if (!channel || !text) return;
+    const emoji = args[0];
+    const name = args[1];
 
-    const msg = await channel.send(`📌 ${text}`);
-    stickyMessages.set(channel.id, msg.id);
+    if (!emoji || !name) {
+      return message.reply(
+        'Usage: .steal <emoji> <name>'
+      );
+    }
+
+    const match =
+      emoji.match(/<?a?:\w+:(\d+)>?/);
+
+    if (!match) {
+      return message.reply('Invalid emoji');
+    }
+
+    const emojiId = match[1];
+
+    const animated =
+      emoji.startsWith('<a:');
+
+    const url =
+      `https://cdn.discordapp.com/emojis/${emojiId}.${animated ? 'gif' : 'png'}`;
+
+    try {
+
+      await message.guild.emojis.create({
+        attachment: url,
+        name
+      });
+
+      message.reply('Emoji added');
+
+    } catch (err) {
+
+      console.error(err);
+
+      message.reply('Failed to add emoji');
+    }
   }
 
-  // AUTO REACT PREFIX
+  // ================= STEAL STICKER =================
+  if (cmd === 'stealsticker') {
+
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.ManageEmojisAndStickers
+      )
+    ) {
+      return message.reply('No permission');
+    }
+
+    const name = args[0];
+
+    if (!name) {
+      return message.reply(
+        'Usage: .stealsticker <name>'
+      );
+    }
+
+    const replied =
+      await message.fetchReference()
+        .catch(() => null);
+
+    if (!replied) {
+      return message.reply(
+        'Reply to a sticker'
+      );
+    }
+
+    const sticker =
+      replied.stickers.first();
+
+    if (!sticker) {
+      return message.reply(
+        'No sticker found'
+      );
+    }
+
+    try {
+
+      const file =
+        new AttachmentBuilder(
+          sticker.url,
+          {
+            name: 'sticker.png'
+          }
+        );
+
+      await message.guild.stickers.create({
+        file,
+        name,
+        tags: 'sticker'
+      });
+
+      message.reply('Sticker added');
+
+    } catch (err) {
+
+      console.error(err);
+
+      message.reply(
+        'Failed to add sticker'
+      );
+    }
+  }
+
+  // ================= AUTOREACT PREFIX =================
   if (cmd === 'autoreact') {
+
     const mode = args[0];
     const emoji = args[1];
-    const channel = message.mentions.channels.first();
+    const channel =
+      message.mentions.channels.first();
 
-    if (!mode || !emoji || !channel) return;
+    if (!mode || !emoji || !channel) {
+      return message.reply(
+        'Usage: .autoreact enable 😀 #channel'
+      );
+    }
 
-    if (mode === 'enable') autoReact.set(channel.id, emoji);
-    if (mode === 'disable') autoReact.delete(channel.id);
+    if (mode === 'enable') {
+
+      autoReact.set(channel.id, emoji);
+
+      return message.reply(
+        `Auto react enabled in ${channel}`
+      );
+    }
+
+    if (mode === 'disable') {
+
+      autoReact.delete(channel.id);
+
+      return message.reply(
+        'Auto react disabled'
+      );
+    }
   }
+
 });
 
 // ================= SLASH COMMANDS =================
 client.on('interactionCreate', async (interaction) => {
+
   if (!interaction.isChatInputCommand()) return;
 
-  // AFK
+  // ================= AFK =================
   if (interaction.commandName === 'afk') {
-    const reason = interaction.options.getString('reason');
+
+    const reason =
+      interaction.options.getString('reason');
 
     afkUsers.set(interaction.user.id, {
       reason,
@@ -254,61 +420,100 @@ client.on('interactionCreate', async (interaction) => {
     });
 
     return interaction.reply({
-      components: [
-        afkContainer(interaction.user.username, reason, 'Now')
-      ],
+      content:
+        `${interaction.user.username} is now AFK\nReason: ${reason}`,
       ephemeral: true
     });
   }
 
-  // AVATAR
+  // ================= AVATAR =================
   if (interaction.commandName === 'avatar') {
-    const user = interaction.options.getUser('user');
+
+    const user =
+      interaction.options.getUser('user');
 
     const embed = new EmbedBuilder()
       .setColor(0x000000)
-      .setImage(user.displayAvatarURL({ size: 1024 }));
+      .setTitle(`${user.username} Avatar`)
+      .setImage(
+        user.displayAvatarURL({
+          size: 1024
+        })
+      );
 
-    return interaction.reply({ embeds: [embed], ephemeral: true });
+    return interaction.reply({
+      embeds: [embed],
+      ephemeral: true
+    });
   }
 
-  // SAY
+  // ================= SAY =================
   if (interaction.commandName === 'say') {
-    const channel = interaction.options.getChannel('channel');
-    const text = interaction.options.getString('text');
 
-    channel.send(text);
-    return interaction.reply({ content: 'Sent', ephemeral: true });
+    const channel =
+      interaction.options.getChannel('channel');
+
+    const text =
+      interaction.options.getString('text');
+
+    await channel.send(text);
+
+    return interaction.reply({
+      content: 'Sent',
+      ephemeral: true
+    });
   }
 
-  // STICK
+  // ================= STICK =================
   if (interaction.commandName === 'stick') {
-    const channel = interaction.options.getChannel('channel');
-    const text = interaction.options.getString('text');
 
-    const msg = await channel.send(`📌 ${text}`);
-    stickyMessages.set(channel.id, msg.id);
+    const channel =
+      interaction.options.getChannel('channel');
 
-    return interaction.reply({ content: 'Sticky set', ephemeral: true });
+    const text =
+      interaction.options.getString('text');
+
+    await channel.send(`📌 ${text}`);
+
+    return interaction.reply({
+      content: 'Sticky sent',
+      ephemeral: true
+    });
   }
 
-  // AUTO REACT
+  // ================= AUTOREACT =================
   if (interaction.commandName === 'autoreact') {
-    const mode = interaction.options.getString('mode');
-    const emoji = interaction.options.getString('emoji');
-    const channel = interaction.options.getChannel('channel');
+
+    const mode =
+      interaction.options.getString('mode');
+
+    const emoji =
+      interaction.options.getString('emoji');
+
+    const channel =
+      interaction.options.getChannel('channel');
 
     if (mode === 'enable') {
+
       autoReact.set(channel.id, emoji);
-      return interaction.reply({ content: 'Enabled', ephemeral: true });
+
+      return interaction.reply({
+        content: 'Auto react enabled',
+        ephemeral: true
+      });
     }
 
     if (mode === 'disable') {
+
       autoReact.delete(channel.id);
-      return interaction.reply({ content: 'Disabled', ephemeral: true });
+
+      return interaction.reply({
+        content: 'Auto react disabled',
+        ephemeral: true
+      });
     }
   }
+
 });
 
-// ================= LOGIN =================
 client.login(process.env.TOKEN);
