@@ -25,15 +25,16 @@ const client = new Client({
   ]
 });
 
-const PREFIX = '.';
-
+// ================= STORAGE =================
 const afkUsers = new Map();
 const welcomeChannels = new Map();
 const autoRoles = new Map();
 const autoReact = new Map();
 const stickyMessages = new Map();
 
-// TIME FORMAT
+const PREFIX = '.';
+
+// ================= UTIL =================
 function formatTime(ms) {
   const s = Math.floor(ms / 1000) % 60;
   const m = Math.floor(ms / 60000) % 60;
@@ -41,7 +42,7 @@ function formatTime(ms) {
   return `${h}h ${m}m ${s}s`;
 }
 
-// AFK CONTAINER
+// ================= AFK CONTAINER =================
 function afkContainer(user, reason, time) {
   return new ContainerBuilder()
     .setAccentColor(0x000000)
@@ -58,8 +59,8 @@ function afkContainer(user, reason, time) {
     );
 }
 
-// READY
-client.once('ready', async () => {
+// ================= READY (FIXED) =================
+client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
   client.user.setPresence({
@@ -73,46 +74,71 @@ client.once('ready', async () => {
     ]
   });
 
+  // ================= SLASH COMMANDS =================
   const commands = [
     new SlashCommandBuilder()
       .setName('afk')
-      .setDescription('AFK system')
+      .setDescription('Set AFK status')
       .addStringOption(o =>
-        o.setName('reason').setRequired(true)
+        o.setName('reason')
+          .setDescription('Your AFK reason')
+          .setRequired(true)
       ),
 
     new SlashCommandBuilder()
       .setName('avatar')
-      .setDescription('Get avatar')
-      .addUserOption(o => o.setName('user').setRequired(true)),
+      .setDescription('Show avatar')
+      .addUserOption(o =>
+        o.setName('user')
+          .setDescription('User to show')
+          .setRequired(true)
+      ),
 
     new SlashCommandBuilder()
       .setName('say')
       .setDescription('Send message')
       .addChannelOption(o =>
-        o.setName('channel').setRequired(true)
+        o.setName('channel')
+          .setDescription('Channel')
+          .setRequired(true)
       )
       .addStringOption(o =>
-        o.setName('text').setRequired(true)
+        o.setName('text')
+          .setDescription('Message')
+          .setRequired(true)
       ),
 
     new SlashCommandBuilder()
       .setName('stick')
       .setDescription('Sticky message')
-      .addChannelOption(o => o.setName('channel').setRequired(true))
-      .addStringOption(o => o.setName('text').setRequired(true)),
+      .addChannelOption(o =>
+        o.setName('channel')
+          .setDescription('Channel')
+          .setRequired(true)
+      )
+      .addStringOption(o =>
+        o.setName('text')
+          .setDescription('Sticky message')
+          .setRequired(true)
+      ),
 
     new SlashCommandBuilder()
       .setName('autoreact')
       .setDescription('Auto react system')
       .addStringOption(o =>
-        o.setName('mode').setRequired(true)
+        o.setName('mode')
+          .setDescription('enable or disable')
+          .setRequired(true)
       )
       .addStringOption(o =>
-        o.setName('emoji').setRequired(true)
+        o.setName('emoji')
+          .setDescription('Emoji')
+          .setRequired(true)
       )
       .addChannelOption(o =>
-        o.setName('channel').setRequired(true)
+        o.setName('channel')
+          .setDescription('Channel')
+          .setRequired(true)
       )
   ].map(c => c.toJSON());
 
@@ -126,17 +152,15 @@ client.once('ready', async () => {
   console.log('Slash commands loaded');
 });
 
-// MESSAGE EVENTS
+// ================= MESSAGE EVENTS =================
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
-  // AUTO REACT (SAFE)
+  // AUTO REACT
   const react = autoReact.get(message.channel.id);
-  if (react) {
-    message.react(react).catch(() => {});
-  }
+  if (react) message.react(react).catch(() => {});
 
-  // AFK MENTION CHECK
+  // AFK MENTION
   for (const user of message.mentions.users.values()) {
     if (!afkUsers.has(user.id)) continue;
 
@@ -158,7 +182,7 @@ client.on('messageCreate', async (message) => {
 
   if (!message.content.startsWith(PREFIX)) return;
 
-  const args = message.content.slice(1).split(/ +/);
+  const args = message.content.slice(1).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
 
   // AFK
@@ -179,8 +203,7 @@ client.on('messageCreate', async (message) => {
 
   // SAY
   if (cmd === 'say') {
-    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator))
-      return;
+    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
 
     const channel = message.mentions.channels.first();
     const text = args.slice(1).join(' ');
@@ -193,8 +216,7 @@ client.on('messageCreate', async (message) => {
 
   // STICKY
   if (cmd === 'stick') {
-    if (!message.member.permissions.has(PermissionsBitField.Flags.ManageMessages))
-      return;
+    if (!message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return;
 
     const channel = message.mentions.channels.first();
     const text = args.slice(1).join(' ');
@@ -205,7 +227,7 @@ client.on('messageCreate', async (message) => {
     stickyMessages.set(channel.id, msg.id);
   }
 
-  // AUTOREACT PREFIX
+  // AUTO REACT PREFIX
   if (cmd === 'autoreact') {
     const mode = args[0];
     const emoji = args[1];
@@ -213,20 +235,16 @@ client.on('messageCreate', async (message) => {
 
     if (!mode || !emoji || !channel) return;
 
-    if (mode === 'enable') {
-      autoReact.set(channel.id, emoji);
-    }
-
-    if (mode === 'disable') {
-      autoReact.delete(channel.id);
-    }
+    if (mode === 'enable') autoReact.set(channel.id, emoji);
+    if (mode === 'disable') autoReact.delete(channel.id);
   }
 });
 
-// SLASH COMMANDS
+// ================= SLASH COMMANDS =================
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  // AFK
   if (interaction.commandName === 'afk') {
     const reason = interaction.options.getString('reason');
 
@@ -236,11 +254,14 @@ client.on('interactionCreate', async (interaction) => {
     });
 
     return interaction.reply({
-      components: [afkContainer(interaction.user.username, reason, 'Now')],
+      components: [
+        afkContainer(interaction.user.username, reason, 'Now')
+      ],
       ephemeral: true
     });
   }
 
+  // AVATAR
   if (interaction.commandName === 'avatar') {
     const user = interaction.options.getUser('user');
 
@@ -251,6 +272,7 @@ client.on('interactionCreate', async (interaction) => {
     return interaction.reply({ embeds: [embed], ephemeral: true });
   }
 
+  // SAY
   if (interaction.commandName === 'say') {
     const channel = interaction.options.getChannel('channel');
     const text = interaction.options.getString('text');
@@ -259,6 +281,7 @@ client.on('interactionCreate', async (interaction) => {
     return interaction.reply({ content: 'Sent', ephemeral: true });
   }
 
+  // STICK
   if (interaction.commandName === 'stick') {
     const channel = interaction.options.getChannel('channel');
     const text = interaction.options.getString('text');
@@ -269,6 +292,7 @@ client.on('interactionCreate', async (interaction) => {
     return interaction.reply({ content: 'Sticky set', ephemeral: true });
   }
 
+  // AUTO REACT
   if (interaction.commandName === 'autoreact') {
     const mode = interaction.options.getString('mode');
     const emoji = interaction.options.getString('emoji');
@@ -286,4 +310,5 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+// ================= LOGIN =================
 client.login(process.env.TOKEN);
