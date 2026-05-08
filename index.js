@@ -1,4 +1,3 @@
-
 require('dotenv').config();
 
 const {
@@ -28,6 +27,7 @@ const PREFIX = '.';
 const afkUsers = new Map();
 const autoReact = new Map();
 const welcomeChannels = new Map();
+const autoRoles = new Map();
 
 // ================= READY =================
 client.once('clientReady', async () => {
@@ -45,39 +45,35 @@ client.once('clientReady', async () => {
     ]
   });
 
-  // ================= SLASH COMMANDS =================
   const commands = [
 
-    // AFK
     new SlashCommandBuilder()
       .setName('afk')
       .setDescription('Set AFK')
       .addStringOption(option =>
         option
           .setName('reason')
-          .setDescription('AFK reason')
+          .setDescription('Reason')
           .setRequired(true)
       ),
 
-    // AVATAR
     new SlashCommandBuilder()
       .setName('avatar')
       .setDescription('Get avatar')
       .addUserOption(option =>
         option
           .setName('user')
-          .setDescription('Target user')
+          .setDescription('User')
           .setRequired(true)
       ),
 
-    // SAY
     new SlashCommandBuilder()
       .setName('say')
       .setDescription('Send message')
       .addChannelOption(option =>
         option
           .setName('channel')
-          .setDescription('Target channel')
+          .setDescription('Channel')
           .addChannelTypes(ChannelType.GuildText)
           .setRequired(true)
       )
@@ -88,25 +84,21 @@ client.once('clientReady', async () => {
           .setRequired(true)
       ),
 
-    // STICK
     new SlashCommandBuilder()
-      .setName('stick')
-      .setDescription('Sticky message')
+      .setName('welcomeenable')
+      .setDescription('Enable welcome')
       .addChannelOption(option =>
         option
           .setName('channel')
-          .setDescription('Target channel')
+          .setDescription('Channel')
           .addChannelTypes(ChannelType.GuildText)
-          .setRequired(true)
-      )
-      .addStringOption(option =>
-        option
-          .setName('text')
-          .setDescription('Sticky text')
           .setRequired(true)
       ),
 
-    // AUTOREACT
+    new SlashCommandBuilder()
+      .setName('welcomedisable')
+      .setDescription('Disable welcome'),
+
     new SlashCommandBuilder()
       .setName('autoreact')
       .setDescription('Auto react')
@@ -128,24 +120,7 @@ client.once('clientReady', async () => {
           .setDescription('Channel')
           .addChannelTypes(ChannelType.GuildText)
           .setRequired(true)
-      ),
-
-    // WELCOME ENABLE
-    new SlashCommandBuilder()
-      .setName('welcomeenable')
-      .setDescription('Enable welcome system')
-      .addChannelOption(option =>
-        option
-          .setName('channel')
-          .setDescription('Welcome channel')
-          .addChannelTypes(ChannelType.GuildText)
-          .setRequired(true)
-      ),
-
-    // WELCOME DISABLE
-    new SlashCommandBuilder()
-      .setName('welcomedisable')
-      .setDescription('Disable welcome system')
+      )
 
   ].map(cmd => cmd.toJSON());
 
@@ -162,22 +137,41 @@ client.once('clientReady', async () => {
 
 });
 
-// ================= WELCOME =================
+// ================= MEMBER JOIN =================
 client.on('guildMemberAdd', async (member) => {
 
-  const channelId =
+  // welcome
+  const welcomeChannel =
     welcomeChannels.get(member.guild.id);
 
-  if (!channelId) return;
+  if (welcomeChannel) {
 
-  const channel =
-    member.guild.channels.cache.get(channelId);
+    const channel =
+      member.guild.channels.cache.get(welcomeChannel);
 
-  if (!channel) return;
+    if (channel) {
 
-  await channel.send(
-    `Welcome ${member} to **${member.guild.name}** you are the **${member.guild.memberCount}th member**!`
-  );
+      await channel.send(
+        `Welcome ${member} to **${member.guild.name}** you are the **${member.guild.memberCount}th member**!`
+      );
+    }
+  }
+
+  // autorole
+  const roleId =
+    autoRoles.get(member.guild.id);
+
+  if (roleId) {
+
+    const role =
+      member.guild.roles.cache.get(roleId);
+
+    if (role) {
+
+      member.roles.add(role)
+        .catch(() => {});
+    }
+  }
 
 });
 
@@ -186,7 +180,7 @@ client.on('messageCreate', async (message) => {
 
   if (message.author.bot) return;
 
-  // ================= AUTO REACT =================
+  // auto react
   const reactEmoji =
     autoReact.get(message.channel.id);
 
@@ -195,7 +189,7 @@ client.on('messageCreate', async (message) => {
       .catch(() => {});
   }
 
-  // ================= AFK MENTION =================
+  // afk mention
   for (const user of message.mentions.users.values()) {
 
     if (!afkUsers.has(user.id)) continue;
@@ -208,7 +202,7 @@ client.on('messageCreate', async (message) => {
     );
   }
 
-  // ================= REMOVE AFK =================
+  // remove afk
   if (
     afkUsers.has(message.author.id) &&
     !message.content.startsWith('.afk')
@@ -278,9 +272,7 @@ client.on('messageCreate', async (message) => {
         PermissionsBitField.Flags.Administrator
       )
     ) {
-      return message.reply(
-        'Admin only'
-      );
+      return message.reply('Admin only');
     }
 
     const channel =
@@ -315,9 +307,7 @@ client.on('messageCreate', async (message) => {
         PermissionsBitField.Flags.ManageEmojisAndStickers
       )
     ) {
-      return message.reply(
-        'No permission'
-      );
+      return message.reply('No permission');
     }
 
     const emoji = args[0];
@@ -330,12 +320,10 @@ client.on('messageCreate', async (message) => {
     }
 
     const match =
-      emoji.match(/<?a?:\\w+:(\\d+)>?/);
+      emoji.match(/<?a?:\w+:(\d+)>?/);
 
     if (!match) {
-      return message.reply(
-        'Invalid emoji'
-      );
+      return message.reply('Invalid emoji');
     }
 
     const emojiId = match[1];
@@ -353,9 +341,7 @@ client.on('messageCreate', async (message) => {
         name
       });
 
-      message.reply(
-        'Emoji added'
-      );
+      message.reply('Emoji added');
 
     } catch (err) {
 
@@ -375,9 +361,7 @@ client.on('messageCreate', async (message) => {
         PermissionsBitField.Flags.ManageEmojisAndStickers
       )
     ) {
-      return message.reply(
-        'No permission'
-      );
+      return message.reply('No permission');
     }
 
     const name = args[0];
@@ -437,6 +421,268 @@ client.on('messageCreate', async (message) => {
     }
   }
 
+  // ================= MEMBER ROLE =================
+  if (cmd === 'memberrole') {
+
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.ManageRoles
+      )
+    ) {
+      return message.reply('No permission');
+    }
+
+    const user =
+      message.mentions.members.first();
+
+    const role =
+      message.mentions.roles.first();
+
+    if (!user || !role) {
+      return message.reply(
+        'Usage: .memberrole @user @role'
+      );
+    }
+
+    await user.roles.add(role);
+
+    message.reply(
+      `Added ${role} to ${user.user.tag}`
+    );
+  }
+
+  // ================= ROLE ALL =================
+  if (cmd === 'roleall') {
+
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.Administrator
+      )
+    ) {
+      return message.reply('Admin only');
+    }
+
+    const role =
+      message.mentions.roles.first();
+
+    if (!role) {
+      return message.reply(
+        'Usage: .roleall @role'
+      );
+    }
+
+    message.guild.members.cache.forEach(member => {
+
+      member.roles.add(role)
+        .catch(() => {});
+    });
+
+    message.reply(
+      `Added ${role} to everyone`
+    );
+  }
+
+  // ================= AUTO ROLE =================
+  if (cmd === 'autorole') {
+
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.Administrator
+      )
+    ) {
+      return message.reply('Admin only');
+    }
+
+    const role =
+      message.mentions.roles.first();
+
+    if (!role) {
+      return message.reply(
+        'Usage: .autorole @role'
+      );
+    }
+
+    autoRoles.set(
+      message.guild.id,
+      role.id
+    );
+
+    message.reply(
+      `Autorole set to ${role}`
+    );
+  }
+
+  // ================= BAN =================
+  if (cmd === 'ban') {
+
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.BanMembers
+      )
+    ) {
+      return message.reply('No permission');
+    }
+
+    const user =
+      message.mentions.members.first();
+
+    if (!user) {
+      return message.reply(
+        'Usage: .ban @user'
+      );
+    }
+
+    await user.ban();
+
+    message.reply(
+      `${user.user.tag} banned`
+    );
+  }
+
+  // ================= UNBAN =================
+  if (cmd === 'unban') {
+
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.BanMembers
+      )
+    ) {
+      return message.reply('No permission');
+    }
+
+    const id = args[0];
+
+    if (!id) {
+      return message.reply(
+        'Usage: .unban userid'
+      );
+    }
+
+    await message.guild.members.unban(id);
+
+    message.reply(
+      `Unbanned ${id}`
+    );
+  }
+
+  // ================= KICK =================
+  if (cmd === 'kick') {
+
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.KickMembers
+      )
+    ) {
+      return message.reply('No permission');
+    }
+
+    const user =
+      message.mentions.members.first();
+
+    if (!user) {
+      return message.reply(
+        'Usage: .kick @user'
+      );
+    }
+
+    await user.kick();
+
+    message.reply(
+      `${user.user.tag} kicked`
+    );
+  }
+
+  // ================= WARN =================
+  if (cmd === 'warn') {
+
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.ModerateMembers
+      )
+    ) {
+      return message.reply('No permission');
+    }
+
+    const user =
+      message.mentions.users.first();
+
+    const reason =
+      args.slice(1).join(' ') || 'No reason';
+
+    if (!user) {
+      return message.reply(
+        'Usage: .warn @user reason'
+      );
+    }
+
+    user.send(
+      `Warned in ${message.guild.name}\nReason: ${reason}`
+    ).catch(() => {});
+
+    message.reply(
+      `${user.tag} warned`
+    );
+  }
+
+  // ================= TIMEOUT =================
+  if (cmd === 'timeout') {
+
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.ModerateMembers
+      )
+    ) {
+      return message.reply('No permission');
+    }
+
+    const user =
+      message.mentions.members.first();
+
+    const minutes =
+      parseInt(args[1]);
+
+    if (!user || isNaN(minutes)) {
+      return message.reply(
+        'Usage: .timeout @user 5'
+      );
+    }
+
+    await user.timeout(
+      minutes * 60 * 1000
+    );
+
+    message.reply(
+      `${user.user.tag} timed out`
+    );
+  }
+
+  // ================= UNTIMEOUT =================
+  if (cmd === 'untimeout') {
+
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.ModerateMembers
+      )
+    ) {
+      return message.reply('No permission');
+    }
+
+    const user =
+      message.mentions.members.first();
+
+    if (!user) {
+      return message.reply(
+        'Usage: .untimeout @user'
+      );
+    }
+
+    await user.timeout(null);
+
+    message.reply(
+      `${user.user.tag} untimeouted`
+    );
+  }
+
   // ================= AUTOREACT =================
   if (cmd === 'autoreact') {
 
@@ -483,15 +729,14 @@ client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand())
     return;
 
-  // ================= AFK =================
+  // AFK
   if (interaction.commandName === 'afk') {
 
     const reason =
       interaction.options.getString('reason');
 
     afkUsers.set(interaction.user.id, {
-      reason,
-      time: Date.now()
+      reason
     });
 
     return interaction.reply({
@@ -501,7 +746,7 @@ client.on('interactionCreate', async (interaction) => {
     });
   }
 
-  // ================= AVATAR =================
+  // AVATAR
   if (interaction.commandName === 'avatar') {
 
     const user =
@@ -523,7 +768,7 @@ client.on('interactionCreate', async (interaction) => {
     });
   }
 
-  // ================= SAY =================
+  // SAY
   if (interaction.commandName === 'say') {
 
     const channel =
@@ -540,26 +785,39 @@ client.on('interactionCreate', async (interaction) => {
     });
   }
 
-  // ================= STICK =================
-  if (interaction.commandName === 'stick') {
+  // WELCOME ENABLE
+  if (interaction.commandName === 'welcomeenable') {
 
     const channel =
       interaction.options.getChannel('channel');
 
-    const text =
-      interaction.options.getString('text');
-
-    await channel.send(
-      `📌 ${text}`
+    welcomeChannels.set(
+      interaction.guild.id,
+      channel.id
     );
 
     return interaction.reply({
-      content: 'Sticky sent',
+      content:
+        `Welcome enabled in ${channel}`,
       ephemeral: true
     });
   }
 
-  // ================= AUTOREACT =================
+  // WELCOME DISABLE
+  if (interaction.commandName === 'welcomedisable') {
+
+    welcomeChannels.delete(
+      interaction.guild.id
+    );
+
+    return interaction.reply({
+      content:
+        'Welcome disabled',
+      ephemeral: true
+    });
+  }
+
+  // AUTOREACT
   if (interaction.commandName === 'autoreact') {
 
     const mode =
@@ -579,7 +837,8 @@ client.on('interactionCreate', async (interaction) => {
       );
 
       return interaction.reply({
-        content: 'Auto react enabled',
+        content:
+          'Auto react enabled',
         ephemeral: true
       });
     }
@@ -591,66 +850,13 @@ client.on('interactionCreate', async (interaction) => {
       );
 
       return interaction.reply({
-        content: 'Auto react disabled',
+        content:
+          'Auto react disabled',
         ephemeral: true
       });
     }
-  }
-
-  // ================= WELCOME ENABLE =================
-  if (interaction.commandName === 'welcomeenable') {
-
-    if (
-      !interaction.member.permissions.has(
-        PermissionsBitField.Flags.Administrator
-      )
-    ) {
-      return interaction.reply({
-        content: 'Admin only',
-        ephemeral: true
-      });
-    }
-
-    const channel =
-      interaction.options.getChannel('channel');
-
-    welcomeChannels.set(
-      interaction.guild.id,
-      channel.id
-    );
-
-    return interaction.reply({
-      content:
-        `Welcome enabled in ${channel}`,
-      ephemeral: true
-    });
-  }
-
-  // ================= WELCOME DISABLE =================
-  if (interaction.commandName === 'welcomedisable') {
-
-    if (
-      !interaction.member.permissions.has(
-        PermissionsBitField.Flags.Administrator
-      )
-    ) {
-      return interaction.reply({
-        content: 'Admin only',
-        ephemeral: true
-      });
-    }
-
-    welcomeChannels.delete(
-      interaction.guild.id
-    );
-
-    return interaction.reply({
-      content:
-        'Welcome disabled',
-      ephemeral: true
-    });
   }
 
 });
 
-client.login(process.env.TOKEN);
+client.login(process.env.TOKEN); 
