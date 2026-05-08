@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 
 const {
@@ -17,7 +18,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
   ]
 });
 
@@ -25,9 +27,11 @@ const PREFIX = '.';
 
 const afkUsers = new Map();
 const autoReact = new Map();
+const welcomeChannels = new Map();
 
 // ================= READY =================
 client.once('clientReady', async () => {
+
   console.log(`Logged in as ${client.user.tag}`);
 
   client.user.setPresence({
@@ -84,14 +88,14 @@ client.once('clientReady', async () => {
           .setRequired(true)
       ),
 
-    // STICKY
+    // STICK
     new SlashCommandBuilder()
       .setName('stick')
       .setDescription('Sticky message')
       .addChannelOption(option =>
         option
           .setName('channel')
-          .setDescription('Channel')
+          .setDescription('Target channel')
           .addChannelTypes(ChannelType.GuildText)
           .setRequired(true)
       )
@@ -124,11 +128,30 @@ client.once('clientReady', async () => {
           .setDescription('Channel')
           .addChannelTypes(ChannelType.GuildText)
           .setRequired(true)
-      )
+      ),
+
+    // WELCOME ENABLE
+    new SlashCommandBuilder()
+      .setName('welcomeenable')
+      .setDescription('Enable welcome system')
+      .addChannelOption(option =>
+        option
+          .setName('channel')
+          .setDescription('Welcome channel')
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      ),
+
+    // WELCOME DISABLE
+    new SlashCommandBuilder()
+      .setName('welcomedisable')
+      .setDescription('Disable welcome system')
 
   ].map(cmd => cmd.toJSON());
 
-  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+  const rest = new REST({
+    version: '10'
+  }).setToken(process.env.TOKEN);
 
   await rest.put(
     Routes.applicationCommands(client.user.id),
@@ -136,24 +159,49 @@ client.once('clientReady', async () => {
   );
 
   console.log('Slash commands loaded');
+
+});
+
+// ================= WELCOME =================
+client.on('guildMemberAdd', async (member) => {
+
+  const channelId =
+    welcomeChannels.get(member.guild.id);
+
+  if (!channelId) return;
+
+  const channel =
+    member.guild.channels.cache.get(channelId);
+
+  if (!channel) return;
+
+  await channel.send(
+    `Welcome ${member} to **${member.guild.name}** you are the **${member.guild.memberCount}th member**!`
+  );
+
 });
 
 // ================= MESSAGE EVENT =================
 client.on('messageCreate', async (message) => {
+
   if (message.author.bot) return;
 
   // ================= AUTO REACT =================
-  const reactEmoji = autoReact.get(message.channel.id);
+  const reactEmoji =
+    autoReact.get(message.channel.id);
 
   if (reactEmoji) {
-    message.react(reactEmoji).catch(() => {});
+    message.react(reactEmoji)
+      .catch(() => {});
   }
 
   // ================= AFK MENTION =================
   for (const user of message.mentions.users.values()) {
+
     if (!afkUsers.has(user.id)) continue;
 
-    const data = afkUsers.get(user.id);
+    const data =
+      afkUsers.get(user.id);
 
     message.reply(
       `${user.username} is AFK\nReason: ${data.reason}`
@@ -165,6 +213,7 @@ client.on('messageCreate', async (message) => {
     afkUsers.has(message.author.id) &&
     !message.content.startsWith('.afk')
   ) {
+
     afkUsers.delete(message.author.id);
 
     message.channel.send(
@@ -172,19 +221,22 @@ client.on('messageCreate', async (message) => {
     );
   }
 
-  if (!message.content.startsWith(PREFIX)) return;
+  if (!message.content.startsWith(PREFIX))
+    return;
 
   const args = message.content
     .slice(PREFIX.length)
     .trim()
     .split(/ +/);
 
-  const cmd = args.shift().toLowerCase();
+  const cmd =
+    args.shift().toLowerCase();
 
   // ================= AFK =================
   if (cmd === 'afk') {
 
-    const reason = args.join(' ') || 'No reason';
+    const reason =
+      args.join(' ') || 'No reason';
 
     afkUsers.set(message.author.id, {
       reason,
@@ -203,14 +255,15 @@ client.on('messageCreate', async (message) => {
       message.mentions.users.first() ||
       message.author;
 
-    const embed = new EmbedBuilder()
-      .setColor(0x000000)
-      .setTitle(`${user.username} Avatar`)
-      .setImage(
-        user.displayAvatarURL({
-          size: 1024
-        })
-      );
+    const embed =
+      new EmbedBuilder()
+        .setColor(0x000000)
+        .setTitle(`${user.username} Avatar`)
+        .setImage(
+          user.displayAvatarURL({
+            size: 1024
+          })
+        );
 
     return message.reply({
       embeds: [embed]
@@ -225,7 +278,9 @@ client.on('messageCreate', async (message) => {
         PermissionsBitField.Flags.Administrator
       )
     ) {
-      return message.reply('Admin only');
+      return message.reply(
+        'Admin only'
+      );
     }
 
     const channel =
@@ -237,7 +292,8 @@ client.on('messageCreate', async (message) => {
       );
     }
 
-    const text = args.slice(1).join(' ');
+    const text =
+      args.slice(1).join(' ');
 
     if (!text) {
       return message.reply(
@@ -247,7 +303,8 @@ client.on('messageCreate', async (message) => {
 
     await channel.send(text);
 
-    message.delete().catch(() => {});
+    message.delete()
+      .catch(() => {});
   }
 
   // ================= STEAL EMOJI =================
@@ -258,7 +315,9 @@ client.on('messageCreate', async (message) => {
         PermissionsBitField.Flags.ManageEmojisAndStickers
       )
     ) {
-      return message.reply('No permission');
+      return message.reply(
+        'No permission'
+      );
     }
 
     const emoji = args[0];
@@ -271,10 +330,12 @@ client.on('messageCreate', async (message) => {
     }
 
     const match =
-      emoji.match(/<?a?:\w+:(\d+)>?/);
+      emoji.match(/<?a?:\\w+:(\\d+)>?/);
 
     if (!match) {
-      return message.reply('Invalid emoji');
+      return message.reply(
+        'Invalid emoji'
+      );
     }
 
     const emojiId = match[1];
@@ -292,13 +353,17 @@ client.on('messageCreate', async (message) => {
         name
       });
 
-      message.reply('Emoji added');
+      message.reply(
+        'Emoji added'
+      );
 
     } catch (err) {
 
       console.error(err);
 
-      message.reply('Failed to add emoji');
+      message.reply(
+        'Failed to add emoji'
+      );
     }
   }
 
@@ -310,7 +375,9 @@ client.on('messageCreate', async (message) => {
         PermissionsBitField.Flags.ManageEmojisAndStickers
       )
     ) {
-      return message.reply('No permission');
+      return message.reply(
+        'No permission'
+      );
     }
 
     const name = args[0];
@@ -356,7 +423,9 @@ client.on('messageCreate', async (message) => {
         tags: 'sticker'
       });
 
-      message.reply('Sticker added');
+      message.reply(
+        'Sticker added'
+      );
 
     } catch (err) {
 
@@ -368,7 +437,7 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // ================= AUTOREACT PREFIX =================
+  // ================= AUTOREACT =================
   if (cmd === 'autoreact') {
 
     const mode = args[0];
@@ -384,7 +453,10 @@ client.on('messageCreate', async (message) => {
 
     if (mode === 'enable') {
 
-      autoReact.set(channel.id, emoji);
+      autoReact.set(
+        channel.id,
+        emoji
+      );
 
       return message.reply(
         `Auto react enabled in ${channel}`
@@ -393,7 +465,9 @@ client.on('messageCreate', async (message) => {
 
     if (mode === 'disable') {
 
-      autoReact.delete(channel.id);
+      autoReact.delete(
+        channel.id
+      );
 
       return message.reply(
         'Auto react disabled'
@@ -406,7 +480,8 @@ client.on('messageCreate', async (message) => {
 // ================= SLASH COMMANDS =================
 client.on('interactionCreate', async (interaction) => {
 
-  if (!interaction.isChatInputCommand()) return;
+  if (!interaction.isChatInputCommand())
+    return;
 
   // ================= AFK =================
   if (interaction.commandName === 'afk') {
@@ -432,14 +507,15 @@ client.on('interactionCreate', async (interaction) => {
     const user =
       interaction.options.getUser('user');
 
-    const embed = new EmbedBuilder()
-      .setColor(0x000000)
-      .setTitle(`${user.username} Avatar`)
-      .setImage(
-        user.displayAvatarURL({
-          size: 1024
-        })
-      );
+    const embed =
+      new EmbedBuilder()
+        .setColor(0x000000)
+        .setTitle(`${user.username} Avatar`)
+        .setImage(
+          user.displayAvatarURL({
+            size: 1024
+          })
+        );
 
     return interaction.reply({
       embeds: [embed],
@@ -473,7 +549,9 @@ client.on('interactionCreate', async (interaction) => {
     const text =
       interaction.options.getString('text');
 
-    await channel.send(`📌 ${text}`);
+    await channel.send(
+      `📌 ${text}`
+    );
 
     return interaction.reply({
       content: 'Sticky sent',
@@ -495,7 +573,10 @@ client.on('interactionCreate', async (interaction) => {
 
     if (mode === 'enable') {
 
-      autoReact.set(channel.id, emoji);
+      autoReact.set(
+        channel.id,
+        emoji
+      );
 
       return interaction.reply({
         content: 'Auto react enabled',
@@ -505,13 +586,69 @@ client.on('interactionCreate', async (interaction) => {
 
     if (mode === 'disable') {
 
-      autoReact.delete(channel.id);
+      autoReact.delete(
+        channel.id
+      );
 
       return interaction.reply({
         content: 'Auto react disabled',
         ephemeral: true
       });
     }
+  }
+
+  // ================= WELCOME ENABLE =================
+  if (interaction.commandName === 'welcomeenable') {
+
+    if (
+      !interaction.member.permissions.has(
+        PermissionsBitField.Flags.Administrator
+      )
+    ) {
+      return interaction.reply({
+        content: 'Admin only',
+        ephemeral: true
+      });
+    }
+
+    const channel =
+      interaction.options.getChannel('channel');
+
+    welcomeChannels.set(
+      interaction.guild.id,
+      channel.id
+    );
+
+    return interaction.reply({
+      content:
+        `Welcome enabled in ${channel}`,
+      ephemeral: true
+    });
+  }
+
+  // ================= WELCOME DISABLE =================
+  if (interaction.commandName === 'welcomedisable') {
+
+    if (
+      !interaction.member.permissions.has(
+        PermissionsBitField.Flags.Administrator
+      )
+    ) {
+      return interaction.reply({
+        content: 'Admin only',
+        ephemeral: true
+      });
+    }
+
+    welcomeChannels.delete(
+      interaction.guild.id
+    );
+
+    return interaction.reply({
+      content:
+        'Welcome disabled',
+      ephemeral: true
+    });
   }
 
 });
