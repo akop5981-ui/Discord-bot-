@@ -22,12 +22,14 @@ const client = new Client({
   ]
 });
 
+// ================= STORAGE =================
 const PREFIX = '.';
 
-const afkUsers = new Map();
-const autoReact = new Map();
-const welcomeChannels = new Map();
-const autoRoles = new Map();
+const afk = new Map();
+const warnings = new Map();
+const welcome = new Map();
+const autorole = new Map();
+const autoreact = new Map();
 
 // ================= READY =================
 client.once('clientReady', async () => {
@@ -36,13 +38,10 @@ client.once('clientReady', async () => {
 
   client.user.setPresence({
     status: 'dnd',
-    activities: [
-      {
-        name: 'N3xel',
-        type: ActivityType.Streaming,
-        url: 'https://discord.gg/th9EWYaCHu'
-      }
-    ]
+    activities: [{
+      name: 'N3xel Server',
+      type: ActivityType.Playing
+    }]
   });
 
   const commands = [
@@ -50,811 +49,319 @@ client.once('clientReady', async () => {
     new SlashCommandBuilder()
       .setName('afk')
       .setDescription('Set AFK')
-      .addStringOption(option =>
-        option
-          .setName('reason')
-          .setDescription('Reason')
-          .setRequired(true)
+      .addStringOption(o =>
+        o.setName('reason').setDescription('reason').setRequired(true)
       ),
 
     new SlashCommandBuilder()
       .setName('avatar')
       .setDescription('Get avatar')
-      .addUserOption(option =>
-        option
-          .setName('user')
-          .setDescription('User')
-          .setRequired(true)
+      .addUserOption(o =>
+        o.setName('user').setDescription('user').setRequired(false)
       ),
 
     new SlashCommandBuilder()
-      .setName('say')
-      .setDescription('Send message')
-      .addChannelOption(option =>
-        option
-          .setName('channel')
-          .setDescription('Channel')
-          .addChannelTypes(ChannelType.GuildText)
-          .setRequired(true)
+      .setName('warn')
+      .setDescription('Warn user')
+      .addUserOption(o =>
+        o.setName('user').setDescription('user').setRequired(true)
       )
-      .addStringOption(option =>
-        option
-          .setName('text')
-          .setDescription('Message')
-          .setRequired(true)
+      .addStringOption(o =>
+        o.setName('reason').setDescription('reason').setRequired(true)
       ),
 
     new SlashCommandBuilder()
-      .setName('welcomeenable')
-      .setDescription('Enable welcome')
-      .addChannelOption(option =>
-        option
-          .setName('channel')
-          .setDescription('Channel')
-          .addChannelTypes(ChannelType.GuildText)
-          .setRequired(true)
+      .setName('warnings')
+      .setDescription('View warnings')
+      .addUserOption(o =>
+        o.setName('user').setDescription('user').setRequired(true)
       ),
 
     new SlashCommandBuilder()
-      .setName('welcomedisable')
-      .setDescription('Disable welcome'),
-
-    new SlashCommandBuilder()
-      .setName('autoreact')
-      .setDescription('Auto react')
-      .addStringOption(option =>
-        option
-          .setName('mode')
-          .setDescription('enable or disable')
-          .setRequired(true)
+      .setName('unwarn')
+      .setDescription('Remove warning')
+      .addUserOption(o =>
+        o.setName('user').setDescription('user').setRequired(true)
       )
-      .addStringOption(option =>
-        option
-          .setName('emoji')
-          .setDescription('Emoji')
-          .setRequired(true)
-      )
-      .addChannelOption(option =>
-        option
-          .setName('channel')
-          .setDescription('Channel')
-          .addChannelTypes(ChannelType.GuildText)
-          .setRequired(true)
+      .addIntegerOption(o =>
+        o.setName('id').setDescription('warn id').setRequired(true)
       )
 
-  ].map(cmd => cmd.toJSON());
+  ].map(c => c.toJSON());
 
-  const rest = new REST({
-    version: '10'
-  }).setToken(process.env.TOKEN);
+  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
   await rest.put(
     Routes.applicationCommands(client.user.id),
     { body: commands }
   );
 
-  console.log('Slash commands loaded');
-
+  console.log('Slash loaded');
 });
 
-// ================= MEMBER JOIN =================
+// ================= WELCOME =================
 client.on('guildMemberAdd', async (member) => {
 
-  // welcome
-  const welcomeChannel =
-    welcomeChannels.get(member.guild.id);
+  const ch = welcome.get(member.guild.id);
+  if (!ch) return;
 
-  if (welcomeChannel) {
+  const channel = member.guild.channels.cache.get(ch);
+  if (!channel) return;
 
-    const channel =
-      member.guild.channels.cache.get(welcomeChannel);
+  channel.send(
+    `Welcome ${member} to **${member.guild.name}** you are the **${member.guild.memberCount}th member**!`
+  );
 
-    if (channel) {
-
-      await channel.send(
-        `Welcome ${member} to **${member.guild.name}** you are the **${member.guild.memberCount}th member**!`
-      );
-    }
+  const role = autorole.get(member.guild.id);
+  if (role) {
+    member.roles.add(role).catch(() => {});
   }
-
-  // autorole
-  const roleId =
-    autoRoles.get(member.guild.id);
-
-  if (roleId) {
-
-    const role =
-      member.guild.roles.cache.get(roleId);
-
-    if (role) {
-
-      member.roles.add(role)
-        .catch(() => {});
-    }
-  }
-
 });
 
-// ================= MESSAGE EVENT =================
+// ================= MESSAGE =================
 client.on('messageCreate', async (message) => {
 
   if (message.author.bot) return;
 
-  // auto react
-  const reactEmoji =
-    autoReact.get(message.channel.id);
-
-  if (reactEmoji) {
-    message.react(reactEmoji)
-      .catch(() => {});
+  // AFK mention
+  if (message.mentions.users.size) {
+    message.mentions.users.forEach(u => {
+      if (afk.has(u.id)) {
+        message.reply(`${u.username} is AFK: ${afk.get(u.id).reason}`);
+      }
+    });
   }
 
-  // afk mention
-  for (const user of message.mentions.users.values()) {
-
-    if (!afkUsers.has(user.id)) continue;
-
-    const data =
-      afkUsers.get(user.id);
-
-    message.reply(
-      `${user.username} is AFK\nReason: ${data.reason}`
-    );
+  if (afk.has(message.author.id)) {
+    afk.delete(message.author.id);
+    message.channel.send(`Welcome back ${message.author}`);
   }
 
-  // remove afk
-  if (
-    afkUsers.has(message.author.id) &&
-    !message.content.startsWith('.afk')
-  ) {
+  if (!message.content.startsWith(PREFIX)) return;
 
-    afkUsers.delete(message.author.id);
-
-    message.channel.send(
-      `Welcome back ${message.author}`
-    );
-  }
-
-  if (!message.content.startsWith(PREFIX))
-    return;
-
-  const args = message.content
-    .slice(PREFIX.length)
-    .trim()
-    .split(/ +/);
-
-  const cmd =
-    args.shift().toLowerCase();
+  const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+  const cmd = args.shift().toLowerCase();
 
   // ================= AFK =================
   if (cmd === 'afk') {
-
-    const reason =
-      args.join(' ') || 'No reason';
-
-    afkUsers.set(message.author.id, {
-      reason,
-      time: Date.now()
+    afk.set(message.author.id, {
+      reason: args.join(' ') || 'No reason'
     });
-
-    return message.channel.send(
-      `${message.author.username} is now AFK\nReason: ${reason}`
-    );
-  }
-
-  // ================= AVATAR =================
-  if (cmd === 'avatar') {
-
-    const user =
-      message.mentions.users.first() ||
-      message.author;
-
-    const embed =
-      new EmbedBuilder()
-        .setColor(0x000000)
-        .setTitle(`${user.username} Avatar`)
-        .setImage(
-          user.displayAvatarURL({
-            size: 1024
-          })
-        );
-
-    return message.reply({
-      embeds: [embed]
-    });
-  }
-
-  // ================= SAY =================
-  if (cmd === 'say') {
-
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.Administrator
-      )
-    ) {
-      return message.reply('Admin only');
-    }
-
-    const channel =
-      message.mentions.channels.first();
-
-    if (!channel) {
-      return message.reply(
-        'Usage: .say #channel hello'
-      );
-    }
-
-    const text =
-      args.slice(1).join(' ');
-
-    if (!text) {
-      return message.reply(
-        'Usage: .say #channel hello'
-      );
-    }
-
-    await channel.send(text);
-
-    message.delete()
-      .catch(() => {});
-  }
-
-  // ================= STEAL EMOJI =================
-  if (cmd === 'steal') {
-
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.ManageEmojisAndStickers
-      )
-    ) {
-      return message.reply('No permission');
-    }
-
-    const emoji = args[0];
-    const name = args[1];
-
-    if (!emoji || !name) {
-      return message.reply(
-        'Usage: .steal <emoji> <name>'
-      );
-    }
-
-    const match =
-      emoji.match(/<?a?:\w+:(\d+)>?/);
-
-    if (!match) {
-      return message.reply('Invalid emoji');
-    }
-
-    const emojiId = match[1];
-
-    const animated =
-      emoji.startsWith('<a:');
-
-    const url =
-      `https://cdn.discordapp.com/emojis/${emojiId}.${animated ? 'gif' : 'png'}`;
-
-    try {
-
-      await message.guild.emojis.create({
-        attachment: url,
-        name
-      });
-
-      message.reply('Emoji added');
-
-    } catch (err) {
-
-      console.error(err);
-
-      message.reply(
-        'Failed to add emoji'
-      );
-    }
-  }
-
-  // ================= STEAL STICKER =================
-  if (cmd === 'stealsticker') {
-
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.ManageEmojisAndStickers
-      )
-    ) {
-      return message.reply('No permission');
-    }
-
-    const name = args[0];
-
-    if (!name) {
-      return message.reply(
-        'Usage: .stealsticker <name>'
-      );
-    }
-
-    const replied =
-      await message.fetchReference()
-        .catch(() => null);
-
-    if (!replied) {
-      return message.reply(
-        'Reply to a sticker'
-      );
-    }
-
-    const sticker =
-      replied.stickers.first();
-
-    if (!sticker) {
-      return message.reply(
-        'No sticker found'
-      );
-    }
-
-    try {
-
-      const file =
-        new AttachmentBuilder(
-          sticker.url,
-          {
-            name: 'sticker.png'
-          }
-        );
-
-      await message.guild.stickers.create({
-        file,
-        name,
-        tags: 'sticker'
-      });
-
-      message.reply(
-        'Sticker added'
-      );
-
-    } catch (err) {
-
-      console.error(err);
-
-      message.reply(
-        'Failed to add sticker'
-      );
-    }
-  }
-
-  // ================= MEMBER ROLE =================
-  if (cmd === 'memberrole') {
-
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.ManageRoles
-      )
-    ) {
-      return message.reply('No permission');
-    }
-
-    const user =
-      message.mentions.members.first();
-
-    const role =
-      message.mentions.roles.first();
-
-    if (!user || !role) {
-      return message.reply(
-        'Usage: .memberrole @user @role'
-      );
-    }
-
-    await user.roles.add(role);
-
-    message.reply(
-      `Added ${role} to ${user.user.tag}`
-    );
-  }
-
-  // ================= ROLE ALL =================
-  if (cmd === 'roleall') {
-
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.Administrator
-      )
-    ) {
-      return message.reply('Admin only');
-    }
-
-    const role =
-      message.mentions.roles.first();
-
-    if (!role) {
-      return message.reply(
-        'Usage: .roleall @role'
-      );
-    }
-
-    message.guild.members.cache.forEach(member => {
-
-      member.roles.add(role)
-        .catch(() => {});
-    });
-
-    message.reply(
-      `Added ${role} to everyone`
-    );
-  }
-
-  // ================= AUTO ROLE =================
-  if (cmd === 'autorole') {
-
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.Administrator
-      )
-    ) {
-      return message.reply('Admin only');
-    }
-
-    const role =
-      message.mentions.roles.first();
-
-    if (!role) {
-      return message.reply(
-        'Usage: .autorole @role'
-      );
-    }
-
-    autoRoles.set(
-      message.guild.id,
-      role.id
-    );
-
-    message.reply(
-      `Autorole set to ${role}`
-    );
-  }
-
-  // ================= BAN =================
-  if (cmd === 'ban') {
-
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.BanMembers
-      )
-    ) {
-      return message.reply('No permission');
-    }
-
-    const user =
-      message.mentions.members.first();
-
-    if (!user) {
-      return message.reply(
-        'Usage: .ban @user'
-      );
-    }
-
-    await user.ban();
-
-    message.reply(
-      `${user.user.tag} banned`
-    );
-  }
-
-  // ================= UNBAN =================
-  if (cmd === 'unban') {
-
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.BanMembers
-      )
-    ) {
-      return message.reply('No permission');
-    }
-
-    const id = args[0];
-
-    if (!id) {
-      return message.reply(
-        'Usage: .unban userid'
-      );
-    }
-
-    await message.guild.members.unban(id);
-
-    message.reply(
-      `Unbanned ${id}`
-    );
-  }
-
-  // ================= KICK =================
-  if (cmd === 'kick') {
-
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.KickMembers
-      )
-    ) {
-      return message.reply('No permission');
-    }
-
-    const user =
-      message.mentions.members.first();
-
-    if (!user) {
-      return message.reply(
-        'Usage: .kick @user'
-      );
-    }
-
-    await user.kick();
-
-    message.reply(
-      `${user.user.tag} kicked`
-    );
+    return message.reply('You are now AFK');
   }
 
   // ================= WARN =================
   if (cmd === 'warn') {
 
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.ModerateMembers
-      )
-    ) {
+    if (!message.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
       return message.reply('No permission');
-    }
 
-    const user =
-      message.mentions.users.first();
+    const user = message.mentions.users.first();
+    const reason = args.slice(1).join(' ') || 'No reason';
 
-    const reason =
-      args.slice(1).join(' ') || 'No reason';
+    if (!user) return message.reply('Mention user');
 
-    if (!user) {
-      return message.reply(
-        'Usage: .warn @user reason'
-      );
-    }
+    if (!warnings.has(user.id)) warnings.set(user.id, []);
 
-    user.send(
-      `Warned in ${message.guild.name}\nReason: ${reason}`
-    ).catch(() => {});
+    const list = warnings.get(user.id);
+    const id = list.length + 1;
 
-    message.reply(
-      `${user.tag} warned`
+    list.push({
+      id,
+      reason,
+      moderator: message.author.tag
+    });
+
+    return message.reply(`Warned ${user.tag} | ID: ${id}`);
+  }
+
+  // ================= WARNINGS =================
+  if (cmd === 'warnings') {
+
+    const user = message.mentions.users.first();
+    if (!user) return message.reply('Mention user');
+
+    const list = warnings.get(user.id);
+    if (!list || !list.length) return message.reply('No warnings');
+
+    return message.reply(
+      list.map(w => `ID:${w.id} | ${w.reason} | by ${w.moderator}`).join('\n')
     );
+  }
+
+  // ================= UNWARN =================
+  if (cmd === 'unwarn') {
+
+    const user = message.mentions.users.first();
+    const id = parseInt(args[1]);
+
+    if (!user || !id) return message.reply('Usage: .unwarn @user id');
+
+    const list = warnings.get(user.id);
+    if (!list) return message.reply('No warnings');
+
+    const index = list.findIndex(w => w.id === id);
+    if (index === -1) return message.reply('Invalid ID');
+
+    list.splice(index, 1);
+
+    return message.reply('Warning removed');
+  }
+
+  // ================= BAN =================
+  if (cmd === 'ban') {
+
+    if (!message.member.permissions.has(PermissionsBitField.Flags.BanMembers))
+      return message.reply('No permission');
+
+    const user = message.mentions.members.first();
+    const reason = args.slice(1).join(' ') || 'No reason';
+
+    if (!user) return message.reply('Mention user');
+
+    await user.ban({ reason });
+
+    message.reply(`Banned ${user.user.tag}`);
+  }
+
+  // ================= KICK =================
+  if (cmd === 'kick') {
+
+    if (!message.member.permissions.has(PermissionsBitField.Flags.KickMembers))
+      return message.reply('No permission');
+
+    const user = message.mentions.members.first();
+    const reason = args.slice(1).join(' ') || 'No reason';
+
+    if (!user) return message.reply('Mention user');
+
+    await user.kick(reason);
+
+    message.reply(`Kicked ${user.user.tag}`);
   }
 
   // ================= TIMEOUT =================
   if (cmd === 'timeout') {
 
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.ModerateMembers
-      )
-    ) {
-      return message.reply('No permission');
-    }
+    const user = message.mentions.members.first();
+    const time = parseInt(args[1]);
 
-    const user =
-      message.mentions.members.first();
+    if (!user || !time) return message.reply('Usage: .timeout @user minutes');
 
-    const minutes =
-      parseInt(args[1]);
+    await user.timeout(time * 60000);
 
-    if (!user || isNaN(minutes)) {
-      return message.reply(
-        'Usage: .timeout @user 5'
-      );
-    }
-
-    await user.timeout(
-      minutes * 60 * 1000
-    );
-
-    message.reply(
-      `${user.user.tag} timed out`
-    );
+    message.reply(`Timed out ${user.user.tag}`);
   }
 
   // ================= UNTIMEOUT =================
   if (cmd === 'untimeout') {
 
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.ModerateMembers
-      )
-    ) {
-      return message.reply('No permission');
-    }
-
-    const user =
-      message.mentions.members.first();
-
-    if (!user) {
-      return message.reply(
-        'Usage: .untimeout @user'
-      );
-    }
+    const user = message.mentions.members.first();
+    if (!user) return message.reply('Mention user');
 
     await user.timeout(null);
 
-    message.reply(
-      `${user.user.tag} untimeouted`
-    );
+    message.reply(`Untimeout ${user.user.tag}`);
   }
 
-  // ================= AUTOREACT =================
-  if (cmd === 'autoreact') {
+  // ================= UNBAN =================
+  if (cmd === 'unban') {
 
-    const mode = args[0];
-    const emoji = args[1];
-    const channel =
-      message.mentions.channels.first();
+    const id = args[0];
+    if (!id) return message.reply('User ID required');
 
-    if (!mode || !emoji || !channel) {
-      return message.reply(
-        'Usage: .autoreact enable 😀 #channel'
-      );
-    }
+    await message.guild.members.unban(id);
 
-    if (mode === 'enable') {
+    message.reply(`Unbanned ${id}`);
+  }
 
-      autoReact.set(
-        channel.id,
-        emoji
-      );
+  // ================= STEAL EMOJI =================
+  if (cmd === 'steal') {
 
-      return message.reply(
-        `Auto react enabled in ${channel}`
-      );
-    }
+    const emoji = args[0];
+    const name = args[1];
 
-    if (mode === 'disable') {
+    const match = emoji?.match(/<a?:\w+:(\d+)>/);
+    if (!match) return message.reply('Invalid emoji');
 
-      autoReact.delete(
-        channel.id
-      );
+    const url = `https://cdn.discordapp.com/emojis/${match[1]}.png`;
 
-      return message.reply(
-        'Auto react disabled'
-      );
-    }
+    await message.guild.emojis.create({ attachment: url, name });
+
+    message.reply('Emoji added');
+  }
+
+  // ================= STEAL STICKER =================
+  if (cmd === 'stealsticker') {
+
+    const name = args[0];
+    const msg = await message.fetchReference().catch(() => null);
+
+    if (!msg) return message.reply('Reply to sticker');
+
+    const sticker = msg.stickers.first();
+    if (!sticker) return message.reply('No sticker');
+
+    const file = new AttachmentBuilder(sticker.url, { name: 'sticker.png' });
+
+    await message.guild.stickers.create({
+      file,
+      name,
+      tags: 'sticker'
+    });
+
+    message.reply('Sticker added');
   }
 
 });
 
-// ================= SLASH COMMANDS =================
-client.on('interactionCreate', async (interaction) => {
+// ================= SLASH =================
+client.on('interactionCreate', async (i) => {
 
-  if (!interaction.isChatInputCommand())
-    return;
+  if (!i.isChatInputCommand()) return;
 
-  // AFK
-  if (interaction.commandName === 'afk') {
+  if (i.commandName === 'warn') {
 
-    const reason =
-      interaction.options.getString('reason');
+    const user = i.options.getUser('user');
+    const reason = i.options.getString('reason');
 
-    afkUsers.set(interaction.user.id, {
-      reason
-    });
+    if (!warnings.has(user.id)) warnings.set(user.id, []);
 
-    return interaction.reply({
-      content:
-        `${interaction.user.username} is now AFK\nReason: ${reason}`,
+    const list = warnings.get(user.id);
+    const id = list.length + 1;
+
+    list.push({ id, reason, moderator: i.user.tag });
+
+    return i.reply({ content: `Warned ${user.tag} ID:${id}`, ephemeral: true });
+  }
+
+  if (i.commandName === 'warnings') {
+
+    const user = i.options.getUser('user');
+    const list = warnings.get(user.id);
+
+    if (!list) return i.reply({ content: 'No warnings', ephemeral: true });
+
+    return i.reply({
+      content: list.map(w => `ID:${w.id} ${w.reason}`).join('\n'),
       ephemeral: true
     });
   }
 
-  // AVATAR
-  if (interaction.commandName === 'avatar') {
+  if (i.commandName === 'unwarn') {
 
-    const user =
-      interaction.options.getUser('user');
+    const user = i.options.getUser('user');
+    const id = i.options.getInteger('id');
 
-    const embed =
-      new EmbedBuilder()
-        .setColor(0x000000)
-        .setTitle(`${user.username} Avatar`)
-        .setImage(
-          user.displayAvatarURL({
-            size: 1024
-          })
-        );
+    const list = warnings.get(user.id);
+    if (!list) return i.reply({ content: 'No warnings', ephemeral: true });
 
-    return interaction.reply({
-      embeds: [embed],
-      ephemeral: true
-    });
-  }
+    const index = list.findIndex(w => w.id === id);
+    if (index === -1) return i.reply({ content: 'Invalid ID', ephemeral: true });
 
-  // SAY
-  if (interaction.commandName === 'say') {
+    list.splice(index, 1);
 
-    const channel =
-      interaction.options.getChannel('channel');
-
-    const text =
-      interaction.options.getString('text');
-
-    await channel.send(text);
-
-    return interaction.reply({
-      content: 'Sent',
-      ephemeral: true
-    });
-  }
-
-  // WELCOME ENABLE
-  if (interaction.commandName === 'welcomeenable') {
-
-    const channel =
-      interaction.options.getChannel('channel');
-
-    welcomeChannels.set(
-      interaction.guild.id,
-      channel.id
-    );
-
-    return interaction.reply({
-      content:
-        `Welcome enabled in ${channel}`,
-      ephemeral: true
-    });
-  }
-
-  // WELCOME DISABLE
-  if (interaction.commandName === 'welcomedisable') {
-
-    welcomeChannels.delete(
-      interaction.guild.id
-    );
-
-    return interaction.reply({
-      content:
-        'Welcome disabled',
-      ephemeral: true
-    });
-  }
-
-  // AUTOREACT
-  if (interaction.commandName === 'autoreact') {
-
-    const mode =
-      interaction.options.getString('mode');
-
-    const emoji =
-      interaction.options.getString('emoji');
-
-    const channel =
-      interaction.options.getChannel('channel');
-
-    if (mode === 'enable') {
-
-      autoReact.set(
-        channel.id,
-        emoji
-      );
-
-      return interaction.reply({
-        content:
-          'Auto react enabled',
-        ephemeral: true
-      });
-    }
-
-    if (mode === 'disable') {
-
-      autoReact.delete(
-        channel.id
-      );
-
-      return interaction.reply({
-        content:
-          'Auto react disabled',
-        ephemeral: true
-      });
-    }
+    return i.reply({ content: 'Removed warning', ephemeral: true });
   }
 
 });
