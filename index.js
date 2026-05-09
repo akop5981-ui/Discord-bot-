@@ -9,7 +9,6 @@ const {
   REST,
   Routes,
   EmbedBuilder,
-  AttachmentBuilder,
   ChannelType
 } = require('discord.js');
 
@@ -31,6 +30,7 @@ const afk = new Map();
 const warnings = new Map();
 const welcomeChannels = new Map();
 const autoRoles = new Map();
+const autoReact = new Map();
 
 // ================= READY =================
 client.once('clientReady', async () => {
@@ -175,10 +175,10 @@ client.once('clientReady', async () => {
 
 });
 
-// ================= WELCOME EVENT =================
+// ================= MEMBER JOIN =================
 client.on('guildMemberAdd', async (member) => {
 
-  // welcome
+  // WELCOME
   const welcomeChannel =
     welcomeChannels.get(member.guild.id);
 
@@ -197,7 +197,7 @@ client.on('guildMemberAdd', async (member) => {
 
   }
 
-  // autorole
+  // AUTOROLE
   const roleId =
     autoRoles.get(member.guild.id);
 
@@ -217,17 +217,29 @@ client.on('guildMemberAdd', async (member) => {
 
 });
 
-// ================= MESSAGE COMMANDS =================
+// ================= MESSAGE EVENT =================
 client.on('messageCreate', async (message) => {
 
   if (message.author.bot) return;
+
+  // ================= AUTOREACT =================
+  const react =
+    autoReact.get(message.channel.id);
+
+  if (react) {
+
+    message.react(react)
+      .catch(() => {});
+
+  }
 
   // ================= AFK MENTION =================
   message.mentions.users.forEach(user => {
 
     if (afk.has(user.id)) {
 
-      const data = afk.get(user.id);
+      const data =
+        afk.get(user.id);
 
       message.reply(
         `${user.username} is AFK\nReason: ${data.reason}`
@@ -317,89 +329,277 @@ client.on('messageCreate', async (message) => {
       message.mentions.channels.first();
 
     if (!channel) {
+
       return message.reply(
         'Usage: .say #channel hello'
       );
+
     }
 
     const text =
       args.slice(1).join(' ');
 
     if (!text) {
+
       return message.reply(
         'Usage: .say #channel hello'
       );
+
     }
 
     await channel.send(text);
 
-    message.delete().catch(() => {});
+    message.delete()
+      .catch(() => {});
 
   }
 
-  // ================= WELCOME ENABLE =================
-  if (cmd === 'welcomeenable') {
+  // ================= STEAL EMOJI =================
+  if (cmd === 'steal') {
 
-    if (
-      !message.member.permissions.has(
-        PermissionsBitField.Flags.Administrator
-      )
-    ) {
-      return message.reply('Admin only');
-    }
+    const emoji = args[0];
+    const name = args[1];
 
-    const channel =
-      message.mentions.channels.first();
+    if (!emoji || !name) {
 
-    if (!channel) {
       return message.reply(
-        'Usage: .welcomeenable #channel'
+        'Usage: .steal <emoji> <name>'
       );
+
     }
 
-    welcomeChannels.set(
-      message.guild.id,
-      channel.id
-    );
+    const regex =
+      /<(a)?:\w+:(\d+)>/;
 
-    message.reply(
-      `Welcome enabled in ${channel}`
-    );
+    const match =
+      emoji.match(regex);
 
-  }
+    if (!match) {
 
-  // ================= WELCOME DISABLE =================
-  if (cmd === 'welcomedisable') {
-
-    welcomeChannels.delete(
-      message.guild.id
-    );
-
-    message.reply(
-      'Welcome disabled'
-    );
-
-  }
-
-  // ================= AUTOROLE =================
-  if (cmd === 'autorole') {
-
-    const role =
-      message.mentions.roles.first();
-
-    if (!role) {
       return message.reply(
-        'Usage: .autorole @role'
+        'Invalid emoji'
       );
+
     }
 
-    autoRoles.set(
-      message.guild.id,
-      role.id
-    );
+    const animated =
+      match[1];
+
+    const emojiId =
+      match[2];
+
+    const url =
+      `https://cdn.discordapp.com/emojis/${emojiId}.${animated ? 'gif' : 'png'}?quality=lossless`;
+
+    try {
+
+      const created =
+        await message.guild.emojis.create({
+          attachment: url,
+          name: name
+        });
+
+      message.reply(
+        `Added emoji ${created}`
+      );
+
+    } catch (err) {
+
+      console.error(err);
+
+      message.reply(
+        'Failed to steal emoji'
+      );
+
+    }
+
+  }
+
+  // ================= STEAL STICKER =================
+  if (cmd === 'stealsticker') {
+
+    const name = args[0];
+
+    if (!name) {
+
+      return message.reply(
+        'Usage: .stealsticker <name>'
+      );
+
+    }
+
+    if (!message.reference) {
+
+      return message.reply(
+        'Reply to a message with a sticker'
+      );
+
+    }
+
+    try {
+
+      const replied =
+        await message.channel.messages.fetch(
+          message.reference.messageId
+        );
+
+      const sticker =
+        replied.stickers.first();
+
+      if (!sticker) {
+
+        return message.reply(
+          'No sticker found'
+        );
+
+      }
+
+      await message.guild.stickers.create({
+        file: sticker.url,
+        name: name,
+        tags: 'sticker'
+      });
+
+      message.reply(
+        `Sticker ${name} added`
+      );
+
+    } catch (err) {
+
+      console.error(err);
+
+      message.reply(
+        'Failed to steal sticker'
+      );
+
+    }
+
+  }
+
+  // ================= WARN =================
+  if (cmd === 'warn') {
+
+    const user =
+      message.mentions.users.first();
+
+    if (!user) {
+
+      return message.reply(
+        'Usage: .warn @user reason'
+      );
+
+    }
+
+    const reason =
+      args.slice(1).join(' ') || 'No reason';
+
+    if (!warnings.has(user.id)) {
+
+      warnings.set(user.id, []);
+
+    }
+
+    const list =
+      warnings.get(user.id);
+
+    const id =
+      list.length + 1;
+
+    list.push({
+      id,
+      reason,
+      moderator: message.author.tag
+    });
 
     message.reply(
-      `Autorole set to ${role}`
+      `Warned ${user.tag}\nWarning ID: ${id}\nReason: ${reason}`
+    );
+
+  }
+
+  // ================= WARNINGS =================
+  if (cmd === 'warnings') {
+
+    const user =
+      message.mentions.users.first();
+
+    if (!user) {
+
+      return message.reply(
+        'Usage: .warnings @user'
+      );
+
+    }
+
+    const list =
+      warnings.get(user.id);
+
+    if (!list || list.length === 0) {
+
+      return message.reply(
+        'No warnings'
+      );
+
+    }
+
+    let text = '';
+
+    for (const warn of list) {
+
+      text +=
+        `ID: ${warn.id}\nReason: ${warn.reason}\nModerator: ${warn.moderator}\n\n`;
+
+    }
+
+    message.reply(text);
+
+  }
+
+  // ================= UNWARN =================
+  if (cmd === 'unwarn') {
+
+    const user =
+      message.mentions.users.first();
+
+    const id =
+      parseInt(args[1]);
+
+    if (!user || isNaN(id)) {
+
+      return message.reply(
+        'Usage: .unwarn @user 1'
+      );
+
+    }
+
+    const list =
+      warnings.get(user.id);
+
+    if (!list) {
+
+      return message.reply(
+        'No warnings'
+      );
+
+    }
+
+    const index =
+      list.findIndex(
+        w => w.id === id
+      );
+
+    if (index === -1) {
+
+      return message.reply(
+        'Invalid warning ID'
+      );
+
+    }
+
+    list.splice(index, 1);
+
+    message.reply(
+      `Removed warning ${id}`
     );
 
   }
@@ -412,7 +612,7 @@ client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand())
     return;
 
-  // ================= AFK =================
+  // AFK
   if (interaction.commandName === 'afk') {
 
     const reason =
@@ -429,7 +629,7 @@ client.on('interactionCreate', async (interaction) => {
 
   }
 
-  // ================= AVATAR =================
+  // AVATAR
   if (interaction.commandName === 'avatar') {
 
     const user =
@@ -452,7 +652,7 @@ client.on('interactionCreate', async (interaction) => {
 
   }
 
-  // ================= SAY =================
+  // SAY
   if (interaction.commandName === 'say') {
 
     const channel =
@@ -470,59 +670,6 @@ client.on('interactionCreate', async (interaction) => {
 
   }
 
-  // ================= WELCOME ENABLE =================
-  if (interaction.commandName === 'welcomeenable') {
-
-    const channel =
-      interaction.options.getChannel('channel');
-
-    welcomeChannels.set(
-      interaction.guild.id,
-      channel.id
-    );
-
-    return interaction.reply({
-      content:
-        `Welcome enabled in ${channel}`,
-      ephemeral: true
-    });
-
-  }
-
-  // ================= WELCOME DISABLE =================
-  if (interaction.commandName === 'welcomedisable') {
-
-    welcomeChannels.delete(
-      interaction.guild.id
-    );
-
-    return interaction.reply({
-      content:
-        'Welcome disabled',
-      ephemeral: true
-    });
-
-  }
-
-  // ================= AUTOROLE =================
-  if (interaction.commandName === 'autorole') {
-
-    const role =
-      interaction.options.getRole('role');
-
-    autoRoles.set(
-      interaction.guild.id,
-      role.id
-    );
-
-    return interaction.reply({
-      content:
-        `Autorole set to ${role}`,
-      ephemeral: true
-    });
-
-  }
-
 });
 
-client.login(process.env.TOKEN);
+client.login(process.env.TOKEN); 
