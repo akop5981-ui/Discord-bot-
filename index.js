@@ -130,7 +130,7 @@ client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
   client.user.setPresence({
     status: 'dnd',
-    activities: [{ name: '@n3xel', type: ActivityType.Custom, state: '@azairo' }]
+    activities: [{ name: '@n3xel', type: ActivityType.Custom, state: '@n3xel' }]
   });
   console.log("status DND with @azairo");
 });
