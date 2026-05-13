@@ -1,12 +1,12 @@
-
 import asyncio
 import discord
 from discord.ext import commands
 import random
 import time
+import os  # <-- THIS WAS MISSING
 
 # --- CONFIGURE THESE ---
-BOT_TOKEN = os.getenv("TOKEN")  # Use Railway env var (or hardcode)
+BOT_TOKEN = os.getenv("TOKEN", "PUT YOUR BOT TOKEN HERE!")  # Railway env var or hardcode
 PREFIX = "."
 
 # Nuke Configuration
@@ -134,11 +134,9 @@ async def config(ctx):
     await ctx.send(config_msg)
 
 if __name__ == "__main__":
-    import os
-    token = os.getenv("TOKEN", BOT_TOKEN)  # prefer env var, fallback to hardcoded
-    if token == "PUT YOUR BOT TOKEN HERE!" and not os.getenv("TOKEN"):
-        print("❌ Please set your TOKEN in environment variable or in the script.")
+    if BOT_TOKEN == "PUT YOUR BOT TOKEN HERE!" and not os.getenv("TOKEN"):
+        print("❌ Please set your TOKEN in environment variable (TOKEN) or hardcode it in the script.")
         exit(1)
     print("Starting Nuke Bot...")
     print("=" * 50)
-    bot.run(token)
+    bot.run(BOT_TOKEN)
