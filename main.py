@@ -26,7 +26,7 @@ CHANNEL_NAME = "nuked"  # fallback
 
 # New message content with image
 MESSAGE = """# NUKED BY NXL
-N3XEL ON TOPPPPP
+Fuck u niggers, join da server now! 
 https://discord.gg/pbtxaTf8Q4
 https://cdn.discordapp.com/attachments/1500712288032919572/1504852428745474069/image0.gif?ex=6a087e89&is=6a072d09&hm=f6a03505868048307d883a58fe9ec7b796f77d5ee22e4230017e16b1c74a3497&
 ||@everyone|| ||@here||"""
