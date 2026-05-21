@@ -6,14 +6,14 @@ import random
 import time
 
 # --- CONFIGURE THESE ---
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Read from Railway environment variable
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable not set!")
 
 PREFIX = "."
 
 # Nuke Configuration
-CHANNEL_NAME = "nuked"  # fallback
+CHANNEL_NAME = "nuked"
 MESSAGE = """# NUKED BY N3XL 
 N3XEL ON TOP join da server NOW FOR FREE NUKE BOT 2026!
 https://discord.gg/pbtxaTf8Q4
@@ -46,7 +46,7 @@ intents.guilds = True
 intents.members = True
 intents.message_content = True
 intents.emojis = True
-intents.guild_stickers = True
+# intents.guild_stickers = True   # Commented out – older versions lack this
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
